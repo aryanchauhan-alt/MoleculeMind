@@ -1,0 +1,17 @@
+# Core Web API
+fastapi>=0.110.0
+uvicorn>=0.28.0
+pydantic>=2.6.0
+
+# Cheminformatics
+rdkit>=2023.9.0
+
+# Machine Learning & Scientific Computing
+numpy>=1.26.0
+pandas>=2.2.0
+scikit-learn>=1.4.0
+
+# Deep Learning & Bayesian Optimization
+torch>=2.2.0
+gpytorch>=1.11
+botorch>=0.10.0
