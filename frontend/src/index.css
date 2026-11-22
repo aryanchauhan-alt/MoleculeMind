@@ -29,18 +29,24 @@
 @layer base {
   :root {
     /* --- paper and ink ------------------------------------------- */
-    --pp-paper:      #F4F3EF;   /* warm off-white, not clinical white */
-    --pp-raised:     #FFFFFF;   /* cards sit above the page */
-    --pp-sunken:     #EBEAE4;   /* wells, table stripes */
-    --pp-ink:        #17171A;
-    --pp-muted:      #6E6E76;
-    --pp-faint:      #9B9BA2;
-    --pp-rule:       rgba(23, 23, 26, 0.12);
-    --pp-rule-soft:  rgba(23, 23, 26, 0.07);
+    /* Measured from the reference the brief names: a pure white page with
+       two flat grey tones for blocks, near-black ink, and essentially no
+       borders. The warm beige this started as read as "vintage paper"
+       rather than clean, which is what the brief asked to fix. */
+    --pp-paper:      #FFFFFF;
+    --pp-raised:     #F6F6F6;   /* blocks sit ON the page, not above it */
+    --pp-sunken:     #EBEBEB;   /* wells, figures, table stripes */
+    --pp-ink:        #151515;
+    --pp-muted:      #6B6B6B;
+    --pp-faint:      #9A9A9A;
+    --pp-rule:       rgba(21, 21, 21, 0.11);
+    --pp-rule-soft:  rgba(21, 21, 21, 0.06);
 
     /* --- one accent, used sparingly ------------------------------ */
-    --pp-accent:     #2B2BE0;   /* electric ink blue */
+    --pp-accent:     #2B2BE0;   /* electric ink blue, used sparingly */
     --pp-accent-wash:rgba(43, 43, 224, 0.07);
+    --pp-radius:     8px;       /* blocks */
+    --pp-radius-pill:999px;
     --pp-caution:    #B4530F;   /* rust, for warnings */
     --pp-caution-wash: rgba(180, 83, 15, 0.08);
     --pp-alarm:      #B3261E;
@@ -88,14 +94,17 @@
 /* --- type ---------------------------------------------------------- */
 .in-display {
   font-family: var(--pp-display);
-  letter-spacing: -0.025em;
-  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-weight: 500;
 }
+/* The reference sets its 100px headline at weight 400, line-height 1.0 and
+   only -1% tracking. Heavy weight plus -4.5% tracking is what made the
+   previous pass look like a tech landing page rather than a clean one. */
 .in-display-xl {
   font-family: var(--pp-display);
-  letter-spacing: -0.045em;
-  font-weight: 700;
-  line-height: 0.9;
+  letter-spacing: -0.012em;
+  font-weight: 400;
+  line-height: 1;
 }
 .in-num {
   font-family: var(--pp-mono);
@@ -105,7 +114,7 @@
 .in-label {
   font-family: var(--pp-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--pp-faint);
 }
@@ -113,22 +122,22 @@
 /* --- surfaces: SOLID. No backdrop-filter anywhere. ----------------- */
 .in-panel {
   background: var(--pp-raised);
-  border: 1px solid var(--pp-rule-soft);
-  border-radius: 14px;
+  border: none;
+  border-radius: var(--pp-radius);
 }
+/* A block on white needs no outline; the tone does the separating. Hover is
+   a tone shift, not a shadow, so nothing is composited on scroll. */
 .in-panel-hover {
-  transition: border-color var(--pp-fast) var(--pp-ease),
-              box-shadow var(--pp-fast) var(--pp-ease);
+  transition: background-color var(--pp-fast) var(--pp-ease);
 }
 .in-panel-hover:hover {
-  border-color: var(--pp-rule);
-  box-shadow: 0 2px 14px rgba(23, 23, 26, 0.05);
+  background: #F0F0F0;
 }
 
-/* A well: recessed area inside a panel, replacing the old dark boxes. */
+/* A well: a recessed figure or code area, one tone below a block. */
 .pp-well {
   background: var(--pp-sunken);
-  border-radius: 10px;
+  border-radius: var(--pp-radius);
 }
 
 /* --- the signature, inverted for paper ----------------------------- */
@@ -158,8 +167,8 @@
 .in-input {
   font-family: var(--pp-mono);
   background: var(--pp-raised);
-  border: 1px solid var(--pp-rule);
-  border-radius: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--pp-radius);
   color: var(--pp-ink);
   transition: border-color var(--pp-fast) var(--pp-ease);
 }
@@ -175,17 +184,24 @@
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  border-radius: 999px;
+  border-radius: var(--pp-radius-pill);
+  /* A sensible default so a bare `.in-btn` is a visible control. Callers that
+     want the filled variant set `background`/`color` inline, which wins. */
+  background: var(--pp-raised);
+  color: var(--pp-ink);
+  border: 1px solid transparent;
+  cursor: pointer;
   transition: background-color var(--pp-fast) var(--pp-ease),
               color var(--pp-fast) var(--pp-ease),
               border-color var(--pp-fast) var(--pp-ease);
 }
+.in-btn:hover { background: #EBEBEB; }
 
 /* --- scrollbar ----------------------------------------------------- */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--pp-paper); }
-::-webkit-scrollbar-thumb { background: #D5D4CD; border-radius: 999px; border: 3px solid var(--pp-paper); }
-::-webkit-scrollbar-thumb:hover { background: #BFBEB6; }
+::-webkit-scrollbar-thumb { background: #D4D4D4; border-radius: 999px; border: 3px solid var(--pp-paper); }
+::-webkit-scrollbar-thumb:hover { background: #BBBBBB; }
 
 /* --- range inputs -------------------------------------------------- */
 input[type="range"] { accent-color: var(--pp-accent); }

@@ -932,5 +932,28 @@ def reset_al():
 frontend_dist = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend", "dist"
 )
+class _VersionedStatic(StaticFiles):
+    """StaticFiles that never lets a browser hold on to a stale index.html.
+
+    Vite fingerprints the bundles (index-<hash>.js), so those are safe to cache
+    forever. index.html is not fingerprinted, and Starlette sends it with no
+    Cache-Control at all, which leaves browsers free to apply heuristic
+    freshness from last-modified. That is exactly what happened after the theme
+    rebuild: the server was serving the new build while the browser kept
+    replaying a cached index.html that pointed at bundles from the old one.
+    """
+
+    def file_response(self, *args, **kwargs):  # type: ignore[override]
+        response = super().file_response(*args, **kwargs)
+        path = str(getattr(response, "path", ""))
+        if path.endswith(".html"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        elif "/assets/" in path.replace(os.sep, "/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 if os.path.exists(frontend_dist):
-    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+    app.mount(
+        "/", _VersionedStatic(directory=frontend_dist, html=True), name="frontend"
+    )

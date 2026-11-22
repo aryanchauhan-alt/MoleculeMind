@@ -130,14 +130,41 @@ export const CountUp: React.FC<{
  * the models are unsure about is literally harder to read. `sigma` is the real
  * conformal scale; `scale` is the sigma at which we consider it fully unsure.
  */
+/**
+ * Map a 90% conformal half-width onto the 0..1 scalar the visual rules use.
+ *
+ * Shared so the figure and the numbers agree, and so the floor below which a
+ * prediction counts as confident is stated in exactly one place.
+ */
+export const uncertaintyScalar = (
+  marginError: number,
+  floor = 1.0,
+  scale = 2.4
+) => Math.min(Math.max((marginError - floor) / scale, 0), 1);
+
 export const Uncertain: React.FC<{
   children: React.ReactNode;
   sigma: number;
   scale?: number;
+  /** Interval half-width below which a prediction is treated as confident. */
+  floor?: number;
   outOfDomain?: boolean;
   className?: string;
-}> = ({ children, sigma, scale = 1.6, outOfDomain = false, className }) => {
-  const u = Math.min(Math.max(sigma / scale, 0), 1);
+}> = ({
+  children,
+  sigma,
+  scale = 2.4,
+  floor = 1.0,
+  outOfDomain = false,
+  className,
+}) => {
+  // Mapping sigma straight to blur from zero was wrong in practice. The 90%
+  // half-width for a molecule the model handles well is already around 1.1
+  // log units, so even the best predictions came out visibly soft and read as
+  // a rendering defect rather than as a statement. The scale now starts at
+  // that floor, so "well predicted" is sharp and the blur is reserved for
+  // intervals that are genuinely wide.
+  const u = Math.min(Math.max((sigma - floor) / scale, 0), 1);
   return (
     <span
       className={`${outOfDomain ? 'in-out-of-domain' : 'in-uncertain'} ${className ?? ''}`}
@@ -145,7 +172,7 @@ export const Uncertain: React.FC<{
       title={
         outOfDomain
           ? 'Outside the applicability domain — rendered hazy because the models cannot be trusted here.'
-          : `Blur is proportional to the calibrated uncertainty (sigma = ${sigma.toFixed(2)}).`
+          : `Blur grows with the calibrated interval half-width (${sigma.toFixed(2)} log units); a confident prediction stays sharp.`
       }
     >
       {children}

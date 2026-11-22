@@ -4,6 +4,7 @@ Handles SMILES validation, 2D SVG rendering, 3D conformer generation,
 molecular descriptors, and Lipinski's Rule of 5 evaluation.
 """
 
+import re
 from typing import Dict, Any, Optional, Tuple
 from rdkit import Chem
 from rdkit.Chem import Descriptors, Lipinski, QED, rdMolDescriptors, AllChem
@@ -29,23 +30,63 @@ def validate_and_canonicalize(smiles: str) -> Tuple[bool, Optional[str], Optiona
         return False, None, None, f"Parsing error: {str(e)}"
 
 
-def generate_2d_svg(mol: Chem.Mol, width: int = 400, height: int = 300, dark_mode: bool = True) -> str:
-    """
-    Generate clean, publication-quality 2D SVG rendering of the molecule.
+def generate_2d_svg(
+    mol: Chem.Mol,
+    width: int = 520,
+    height: int = 360,
+    dark_mode: bool = False,
+) -> str:
+    """Publication-quality 2D depiction, drawn for a light page.
+
+    Three things matter for how sharp this looks in the browser:
+
+    * The drawing is emitted at a generous intrinsic size. RDKit expresses font
+      size and bond width in pixels of this canvas, so a cramped canvas gives
+      spindly bonds and tiny labels once the browser scales the SVG up.
+    * `width`/`height` attributes are stripped from the root element, leaving
+      only the viewBox. The SVG then scales to its container as true vector
+      geometry instead of being pinned at a fixed pixel box and letter-boxed.
+    * `addStereoAnnotation` and explicit padding stop labels from colliding
+      with the frame.
+
+    `dark_mode` is kept for callers that still pass it, but the default is now
+    light: the interface it is drawn onto is paper.
     """
     mol_copy = Chem.Mol(mol)
     AllChem.Compute2DCoords(mol_copy)
-    
+
     drawer = rdMolDraw2D.MolDraw2DSVG(width, height)
     opts = drawer.drawOptions()
     opts.clearBackground = True
-    
+    opts.bondLineWidth = 2
+    opts.multipleBondOffset = 0.14
+    opts.padding = 0.08
+    opts.additionalAtomLabelPadding = 0.04
+    opts.fixedFontSize = -1
+    opts.minFontSize = 13
+    opts.maxFontSize = 20
+    opts.addStereoAnnotation = True
+    opts.annotationFontScale = 0.65
+
     if dark_mode:
-        opts.setBackgroundColour((0.08, 0.11, 0.18, 0.0))  # Slate transparent
-    
-    drawer.DrawMolecule(mol_copy)
+        opts.setBackgroundColour((0.08, 0.11, 0.18, 0.0))
+    else:
+        # Transparent, so the well behind it supplies the paper tone, with ink
+        # that matches the interface rather than RDKit's default pure black.
+        opts.setBackgroundColour((1.0, 1.0, 1.0, 0.0))
+        opts.setSymbolColour((0.09, 0.09, 0.10))
+
+    rdMolDraw2D.PrepareAndDrawMolecule(drawer, mol_copy)
     drawer.FinishDrawing()
-    return drawer.GetDrawingText()
+    svg = drawer.GetDrawingText()
+
+    # Drop the fixed pixel box so the figure is fluid; the viewBox carries the
+    # geometry, so nothing is cropped and nothing is resampled.
+    svg = re.sub(r"\s(width|height)='\d+(?:\.\d+)?px'", "", svg, count=2)
+    svg = svg.replace(
+        "<svg ", "<svg style='width:100%;height:100%;display:block' ", 1
+    )
+    return svg
 
 
 def generate_3d_sdf(mol: Chem.Mol, max_attempts: int = 50) -> Tuple[Optional[str], Optional[str]]:

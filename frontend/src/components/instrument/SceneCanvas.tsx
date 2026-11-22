@@ -120,13 +120,15 @@ const Molecule: React.FC<{
     <group ref={group} scale={scale}>
       {positions.map((p, i) => (
         <mesh key={`a${i}`} position={p}>
-          {/* Low segment counts: at this size the difference is invisible and
-              the triangle count drops by roughly three quarters. */}
-          <sphereGeometry args={[radiusFor(atoms[i].element), 16, 16]} />
+          {/* Segment counts were cut to 16 when the canvas was full-screen.
+              The figure is a fraction of that area now, so the triangles are
+              cheap again and the faceting they caused was the main reason the
+              spheres read as low quality. */}
+          <sphereGeometry args={[radiusFor(atoms[i].element), 40, 28]} />
           <meshStandardMaterial
             color={colorFor(atoms[i].element)}
-            roughness={0.55}
-            metalness={0.05}
+            roughness={0.38}
+            metalness={0.04}
           />
         </mesh>
       ))}
@@ -142,8 +144,8 @@ const Molecule: React.FC<{
         );
         return (
           <mesh key={`b${i}`} position={mid} quaternion={quat}>
-            <cylinderGeometry args={[0.07, 0.07, dir.length(), 8]} />
-            <meshStandardMaterial color="#9A9AA2" roughness={0.6} />
+            <cylinderGeometry args={[0.075, 0.075, dir.length(), 20]} />
+            <meshStandardMaterial color="#A6A6AE" roughness={0.45} />
           </mesh>
         );
       })}
@@ -197,28 +199,42 @@ export const MoleculeFigure: React.FC<{
         className="pp-well overflow-hidden"
         style={{
           height,
-          // The signature rule, applied to the figure: an untrustworthy
-          // molecule is literally less distinct.
+          // The signature rule, applied to the figure.
+          //
+          // This used to blur the render in proportion to uncertainty, which
+          // was a mistake: a blurred 3D render is indistinguishable from a
+          // badly rendered one, so the rule read as poor image quality rather
+          // than as a statement about confidence. The numbers still blur —
+          // there the intent is unmistakable, and they carry a tooltip. Here
+          // the figure fades and desaturates instead, which reads as
+          // "provisional" while staying sharp.
+          opacity: outOfDomain ? 0.55 : 1 - uncertainty * 0.22,
           filter: outOfDomain
-            ? 'blur(1.4px) saturate(0.5)'
-            : `blur(${(uncertainty * 1.1).toFixed(2)}px)`,
-          transition: 'filter 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
+            ? 'saturate(0.25) contrast(0.9)'
+            : `saturate(${(1 - uncertainty * 0.45).toFixed(2)})`,
+          transition:
+            'opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), filter 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
         {atoms.length > 0 && (
           <Canvas
             camera={{ position: [0, 0, 9], fov: 34 }}
-            // Capped: an uncapped dpr on a 2x display quadruples the backing
-            // store for no visible gain at this size.
-            dpr={[1, 1.5]}
+            // 1.5 was a full-screen-canvas compromise. At figure size the
+            // backing store is small enough to render at the display's own
+            // pixel ratio, which is what stops the edges looking soft on a
+            // Retina screen.
+            dpr={[1, 2]}
             // `demand` would need manual invalidation for the spin; `always`
             // is fine because the canvas unmounts its loop when not running.
             frameloop={running ? 'always' : 'never'}
             gl={{ antialias: true, alpha: true, powerPreference: 'default' }}
             style={{ pointerEvents: 'none' }}
           >
-            <ambientLight intensity={0.85} />
-            <directionalLight position={[4, 6, 8]} intensity={1.5} />
+            <ambientLight intensity={0.7} />
+            <directionalLight position={[4, 6, 8]} intensity={1.35} />
+            {/* A cool fill from the opposite side stops the unlit hemispheres
+                going flat grey against a light page. */}
+            <directionalLight position={[-6, -3, -4]} intensity={0.45} color="#C9D4FF" />
             <Molecule atoms={atoms} bonds={bonds} spin={running} />
           </Canvas>
         )}

@@ -24,6 +24,7 @@ import {
   Stagger,
   StaggerItem,
   Uncertain,
+  uncertaintyScalar,
 } from './primitives';
 import { MoleculeFigure, parseMolBlock, useScene } from './SceneCanvas';
 
@@ -80,7 +81,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
         // half-width at 90% is the most honest single scalar we have.
         const sol = json.properties?.solubility_logs;
         const margin = sol?.conformal?.intervals?.['90%']?.margin_error ?? 0;
-        scene.setUncertainty(Math.min(margin / 2.5, 1));
+        scene.setUncertainty(uncertaintyScalar(margin));
         scene.setOutOfDomain(json.applicability_domain?.status === 'OUT_OF_DOMAIN');
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Prediction failed.');

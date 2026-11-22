@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { MoleculeFigure, parseMolBlock, useScene } from './instrument/SceneCanvas';
-import { Rise, Stagger, StaggerItem, Uncertain } from './instrument/primitives';
+import {
+  Rise,
+  Stagger,
+  StaggerItem,
+  Uncertain,
+  uncertaintyScalar,
+} from './instrument/primitives';
 
 /**
  * The overview page, on paper.
@@ -106,7 +112,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         const margin =
           json.properties?.solubility_logs?.conformal?.intervals?.['90%']
             ?.margin_error ?? 0;
-        scene.setUncertainty(Math.min(margin / 2.5, 1));
+        scene.setUncertainty(uncertaintyScalar(margin));
         scene.setOutOfDomain(
           json.applicability_domain?.status === 'OUT_OF_DOMAIN'
         );
@@ -236,7 +242,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               />
               {backendHealthy ? 'online' : 'offline'}
             </span>
-            <button onClick={() => onLaunchApp('analyzer')} className="in-btn">
+            <button onClick={() => onLaunchApp('analyzer')} className="in-btn px-5 py-2.5">
               Open workbench
             </button>
           </div>
@@ -284,7 +290,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div className="mt-9 flex flex-wrap items-center gap-3">
                 <button
                   onClick={() => onLaunchApp('analyzer')}
-                  className="in-btn"
+                  className="in-btn px-5 py-3"
                   style={{
                     background: 'var(--pp-ink)',
                     color: 'var(--pp-paper)',
@@ -293,7 +299,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 >
                   Open the workbench
                 </button>
-                <button onClick={onOpenGlossary} className="in-btn">
+                <button onClick={onOpenGlossary} className="in-btn px-5 py-2.5">
                   Methodology
                 </button>
               </div>
@@ -421,11 +427,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* -------------------------------------------------------- live */}
       <section
         id="live"
-        style={{
-          background: 'var(--pp-sunken)',
-          borderTop: '1px solid var(--pp-rule)',
-          borderBottom: '1px solid var(--pp-rule)',
-        }}
+        style={{ background: 'var(--pp-raised)' }}
       >
         <div className="max-w-[1400px] w-full mx-auto px-5 sm:px-8 py-20 sm:py-24">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -465,7 +467,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           </div>
 
-          <div className="mt-10 in-panel p-7 sm:p-9">
+          <div className="mt-10 in-panel p-7 sm:p-9" style={{ background: 'var(--pp-paper)' }}>
             {demoError && (
               <div className="text-sm" style={{ color: 'var(--pp-alarm)' }}>
                 {demoError}
@@ -501,7 +503,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                   <button
                     onClick={() => onLaunchApp('prediction')}
-                    className="in-btn mt-7"
+                    className="in-btn px-5 py-2.5 mt-7"
                   >
                     Take it to the workbench
                   </button>
@@ -618,7 +620,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 Six modules, one pipeline.
               </h2>
             </div>
-            <button onClick={() => onLaunchApp('analyzer')} className="in-btn self-start">
+            <button onClick={() => onLaunchApp('analyzer')} className="in-btn px-5 py-2.5 self-start">
               Open all six
             </button>
           </div>
@@ -662,10 +664,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* -------------------------------------------------- validation */}
       <section
         id="validation"
-        style={{
-          background: 'var(--pp-sunken)',
-          borderTop: '1px solid var(--pp-rule)',
-        }}
+        style={{ background: 'var(--pp-raised)' }}
       >
         <div className="max-w-[1400px] w-full mx-auto px-5 sm:px-8 py-20 sm:py-24">
           <Rise>
@@ -712,7 +711,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 n: 'how often the interval actually contained the measurement',
               },
             ].map((s) => (
-              <div key={s.t} className="in-panel p-6">
+              <div key={s.t} className="in-panel p-6" style={{ background: 'var(--pp-paper)' }}>
                 <div className="in-num text-3xl sm:text-4xl font-light">
                   {s.v}
                 </div>
@@ -727,14 +726,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             ))}
           </div>
 
-          <div className="mt-8 in-panel p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+          <div className="mt-8 in-panel p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5" style={{ background: 'var(--pp-paper)' }}>
             <p className="text-sm" style={{ color: 'var(--pp-muted)' }}>
               The benchmark module shows the parity plot, the residual
               distribution and the coverage table behind these four numbers.
             </p>
             <button
               onClick={() => onLaunchApp('benchmark')}
-              className="in-btn shrink-0"
+              className="in-btn px-5 py-2.5 shrink-0"
             >
               Open benchmark
             </button>
