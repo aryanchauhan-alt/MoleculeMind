@@ -79,6 +79,20 @@ export const PropertyPredictionTab: React.FC<PredictionProps> = ({ initialSmiles
   const [showConformalMath, setShowConformalMath] = useState<boolean>(false);
   const [showLeverageDetails, setShowLeverageDetails] = useState<boolean>(false);
 
+  // Fetched rather than hardcoded: a literal here silently goes stale the
+  // moment the model is retrained.
+  const [esolR2, setEsolR2] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/health')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j?.esol_metrics?.r2_score != null) setEsolR2(j.esol_metrics.r2_score);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
   // Properties come from the backend keyed by name, each carrying its own
   // status/provenance. Unknown keys are tolerated so the UI does not need a
   // redeploy when a new model is added.
@@ -162,7 +176,10 @@ export const PropertyPredictionTab: React.FC<PredictionProps> = ({ initialSmiles
 
           <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-xs font-mono text-slate-300 self-start sm:self-auto">
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>Delaney ESOL ExtraTrees (R² = 0.894)</span>
+            <span>
+              Delaney ESOL ExtraTrees
+              {esolR2 !== null ? ` (R² = ${esolR2.toFixed(3)})` : ''}
+            </span>
           </div>
         </div>
 

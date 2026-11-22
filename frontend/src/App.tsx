@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
-import { DiscoveryWorkflowGuide } from './components/DiscoveryWorkflowGuide';
-import { MolecularAnalyzerTab } from './components/MolecularAnalyzerTab';
 import { PropertyPredictionTab } from './components/PropertyPredictionTab';
 import { ParetoLaboratoryTab } from './components/ParetoLaboratoryTab';
 import { ActiveLearningTab } from './components/ActiveLearningTab';
@@ -11,14 +8,20 @@ import { BenchmarkTab } from './components/BenchmarkTab';
 import { DiscoveryEngineTab } from './components/DiscoveryEngineTab';
 import { ConceptHelpModal } from './components/ScientificTooltip';
 import { AgencyCursor } from './components/AgencyCursor';
+import { SceneProvider, useScene } from './components/instrument/SceneCanvas';
+import { Nav } from './components/instrument/Nav';
+import { AnalyzerModule } from './components/instrument/AnalyzerModule';
+import { BootSequence } from './components/instrument/primitives';
 import { Atom } from 'lucide-react';
 
-export function App() {
+function AppInner() {
+  const scene = useScene();
   const [currentView, setCurrentView] = useState<'landing' | 'app'>('landing');
   const [activeTab, setActiveTab] = useState<'analyzer' | 'prediction' | 'pareto' | 'discovery' | 'active_learning' | 'benchmark'>('analyzer');
   const [backendHealthy, setBackendHealthy] = useState<boolean>(false);
   const [activeSmiles, setActiveSmiles] = useState<string>('CC(=O)Oc1ccccc1C(=O)O');
   const [isGlossaryOpen, setIsGlossaryOpen] = useState<boolean>(false);
+  const [booted, setBooted] = useState<boolean>(false);
 
   // URL Hash Synchronisation for bookmarking and back button navigation
   useEffect(() => {
@@ -66,6 +69,7 @@ export function App() {
 
   const handleTabChange = (tab: 'analyzer' | 'prediction' | 'pareto' | 'discovery' | 'active_learning' | 'benchmark') => {
     setActiveTab(tab);
+    scene.setMode(tab);
     updateHash('app', tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -100,13 +104,17 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#060709] text-slate-100 flex flex-col font-sans selection:bg-white selection:text-black relative">
+    <div className="min-h-screen flex flex-col in-grain relative" style={{ color: 'var(--in-text)' }}>
       {/* Editorial Luxury Agency Cursor */}
       <AgencyCursor />
 
-      {/* Atmospheric Soft Lighting */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[550px] ambient-glow-silver blur-[180px] pointer-events-none z-0" />
-      <div className="fixed bottom-0 right-1/4 w-[700px] h-[450px] ambient-glow-cyan blur-[180px] pointer-events-none z-0" />
+      {/* Boot sequence — covers the first paint while models load */}
+      <AnimatePresence>
+        {!booted && <BootSequence ready={backendHealthy} onDone={() => setBooted(true)} />}
+      </AnimatePresence>
+
+      {/* Measurement grid, very faint, behind the WebGL layer */}
+      <div className="fixed inset-0 in-grid-bg pointer-events-none z-0 opacity-50" />
 
       {/* View 1: Editorial Landing Page */}
       {currentView === 'landing' ? (
@@ -118,45 +126,16 @@ export function App() {
       ) : (
         /* View 2: High-Fidelity Scientific Discovery Workbench */
         <div className="min-h-screen flex flex-col relative z-10">
-          {/* Platform Header & Navigation */}
-          <Header 
-            activeTab={activeTab} 
-            setActiveTab={handleTabChange}
-            onReturnToLanding={handleReturnToLanding}
-            onOpenGlossary={() => setIsGlossaryOpen(true)}
-            backendHealthy={backendHealthy} 
+          {/* Module index */}
+          <Nav
+            active={activeTab as any}
+            onChange={(id) => handleTabChange(id as any)}
+            backendHealthy={backendHealthy}
+            onHome={handleReturnToLanding}
           />
 
           {/* Main Discovery Container */}
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {/* Guided Discovery Pipeline Tracker */}
-            <DiscoveryWorkflowGuide
-              currentTab={activeTab}
-              onNavigateTab={handleTabChange}
-              activeSmiles={activeSmiles}
-            />
-
-            {/* Connection Alert if backend is down */}
-            {!backendHealthy && (
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs flex items-center justify-between backdrop-blur-md"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                  <span className="font-mono">
-                    Connecting to MoleculeMind backend server (<code>http://127.0.0.1:8000</code>)... Ensure FastAPI server is running.
-                  </span>
-                </div>
-                <button
-                  onClick={checkHealth}
-                  className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded-lg text-xs transition-all cursor-pointer font-mono font-medium border border-amber-500/30"
-                >
-                  Retry Link
-                </button>
-              </motion.div>
-            )}
 
             {/* Animated Tab Views */}
             <AnimatePresence mode="wait">
@@ -168,9 +147,7 @@ export function App() {
                 transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               >
                 {activeTab === 'analyzer' && (
-                  <MolecularAnalyzerTab 
-                    onSendToPredict={handleSendToPredict} 
-                  />
+                  <AnalyzerModule onSendToPrediction={handleSendToPredict} />
                 )}
 
                 {activeTab === 'prediction' && (
@@ -239,6 +216,14 @@ export function App() {
         onClose={() => setIsGlossaryOpen(false)} 
       />
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <SceneProvider>
+      <AppInner />
+    </SceneProvider>
   );
 }
 

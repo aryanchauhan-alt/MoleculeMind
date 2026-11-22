@@ -172,3 +172,156 @@
   border-color: rgba(255, 255, 255, 0.25);
   color: #ffffff;
 }
+
+/* ===================================================================
+   INSTRUMENT — design system
+   -------------------------------------------------------------------
+   Concept: a research vessel's instrument panel. Dark, measured,
+   monospace numerals, one luminous object at the centre.
+
+   The signature rule: UNCERTAINTY IS RENDERED AS OPTICAL BLUR.
+   Confident output is crisp; uncertain output is soft, grainy and
+   desaturated. The project's thesis becomes the visual language.
+   =================================================================== */
+
+@layer base {
+  :root {
+    /* --- surfaces -------------------------------------------------- */
+    --in-base:        #06070A;
+    --in-surface:     #0C0D14;
+    --in-raised:      #12141C;
+    --in-line:        rgba(255, 255, 255, 0.06);
+    --in-line-strong: rgba(255, 255, 255, 0.14);
+
+    /* --- text ------------------------------------------------------ */
+    --in-text:        #E8ECF2;
+    --in-dim:         #8A93A3;
+    --in-faint:       #555F70;
+
+    /* --- one accent, used with restraint -------------------------- */
+    --in-signal:      #4CE0E0;
+    --in-signal-dim:  rgba(76, 224, 224, 0.12);
+    --in-caution:     #F0B35B;
+    --in-alarm:       #F0715B;
+
+    /* --- motion: ONE curve, three tiers --------------------------- */
+    --in-ease:        cubic-bezier(0.16, 1, 0.3, 1);
+    --in-fast:        0.4s;
+    --in-base-dur:    0.7s;
+    --in-cine:        1.2s;
+
+    /* --- type ------------------------------------------------------ */
+    --in-display: 'Space Grotesk', system-ui, sans-serif;
+    --in-mono:    'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  body {
+    background-color: var(--in-base);
+    color: var(--in-text);
+  }
+}
+
+/* --- display type: tight tracking is what reads as "designed" ----- */
+.in-display {
+  font-family: var(--in-display);
+  letter-spacing: -0.03em;
+  font-weight: 600;
+}
+.in-display-xl { font-family: var(--in-display); letter-spacing: -0.04em; font-weight: 700; line-height: 0.92; }
+
+/* --- every number is monospace: this is what makes it an instrument */
+.in-num {
+  font-family: var(--in-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.in-label {
+  font-family: var(--in-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--in-faint);
+}
+
+/* --- panels ------------------------------------------------------- */
+.in-panel {
+  background: color-mix(in srgb, var(--in-surface) 82%, transparent);
+  backdrop-filter: blur(24px) saturate(1.1);
+  -webkit-backdrop-filter: blur(24px) saturate(1.1);
+  border: 1px solid var(--in-line);
+  border-radius: 20px;
+}
+.in-panel-hover { transition: border-color var(--in-fast) var(--in-ease), transform var(--in-fast) var(--in-ease); }
+.in-panel-hover:hover { border-color: var(--in-line-strong); transform: translateY(-2px); }
+
+/* --- THE SIGNATURE: certainty as optical sharpness ---------------- */
+/* Applied to any value whose uncertainty we know. `--u` is 0 (certain)
+   to 1 (entirely unsure) and is set inline from the real sigma.      */
+.in-uncertain {
+  --u: 0;
+  filter: blur(calc(var(--u) * 3.2px)) saturate(calc(1 - var(--u) * 0.55));
+  opacity: calc(1 - var(--u) * 0.3);
+  transition: filter var(--in-base-dur) var(--in-ease),
+              opacity var(--in-base-dur) var(--in-ease);
+}
+/* Out-of-domain goes further: hazy, cold, pushed away */
+.in-out-of-domain {
+  filter: blur(2.4px) saturate(0.35) brightness(0.85);
+  opacity: 0.62;
+}
+
+/* --- fine grain: the cheapest way to add filmic depth ------------- */
+.in-grain::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/* --- measurement grid: reinforces "instrument" -------------------- */
+.in-grid-bg {
+  background-image:
+    linear-gradient(var(--in-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--in-line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black, transparent 75%);
+}
+
+/* --- hairline rule with a signal tick ----------------------------- */
+.in-rule { height: 1px; background: var(--in-line); position: relative; }
+.in-rule::before {
+  content: ''; position: absolute; left: 0; top: 0; width: 32px; height: 1px;
+  background: var(--in-signal);
+}
+
+/* --- focus states that match the system -------------------------- */
+.in-input {
+  font-family: var(--in-mono);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--in-line);
+  border-radius: 14px;
+  transition: border-color var(--in-fast) var(--in-ease), box-shadow var(--in-fast) var(--in-ease);
+}
+.in-input:focus {
+  outline: none;
+  border-color: var(--in-signal);
+  box-shadow: 0 0 0 3px var(--in-signal-dim);
+}
+
+/* --- a button that feels machined -------------------------------- */
+.in-btn {
+  font-family: var(--in-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 9999px;
+  transition: all var(--in-fast) var(--in-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .in-uncertain, .in-panel-hover { transition: none; }
+}
