@@ -8,10 +8,14 @@ properties, attaches calibrated uncertainty to every prediction, warns when a
 molecule falls outside what the models actually know, finds the genuine
 trade-offs between competing objectives, and plans experiments against a budget.
 
-> ### New here? Read [LEARNING_GUIDE.md](LEARNING_GUIDE.md).
-> It explains the entire project from first principles — what a SMILES string is,
-> through to how the experiment planner works — assuming no background in
-> chemistry or machine learning. It is the best place to start.
+> ### New here? Read [PROJECT_EXPLAINED_SIMPLY.md](PROJECT_EXPLAINED_SIMPLY.md).
+> Plain English, no chemistry or machine-learning background assumed. Every
+> technical word is explained the moment it appears, with everyday analogies,
+> plus tables of exactly which tools we used and which file each piece lives in.
+> **Start there.**
+>
+> [LEARNING_GUIDE.md](LEARNING_GUIDE.md) covers the same ground in more depth and
+> with the proper terminology, for when you want the technical version.
 
 ---
 
@@ -167,7 +171,9 @@ Deliberately stopped here rather than adding modules of diminishing value.
 
 | File | What it is for |
 |---|---|
-| **[LEARNING_GUIDE.md](LEARNING_GUIDE.md)** | **Start here.** The whole project from first principles, plus a glossary and likely examiner questions |
+| **[PROJECT_EXPLAINED_SIMPLY.md](PROJECT_EXPLAINED_SIMPLY.md)** | **Start here.** Plain English, no background assumed. Analogies, what-we-used and where-it-lives tables, a 20-word glossary |
+| [LEARNING_GUIDE.md](LEARNING_GUIDE.md) | The same material with proper terminology and more depth, plus likely examiner questions |
+| [PRESENTATION_GUIDE.md](PRESENTATION_GUIDE.md) | Word-for-word demo script and answers to likely questions |
 | [SCIENTIFIC_METHODOLOGY.md](SCIENTIFIC_METHODOLOGY.md) | Every algorithm's mathematics, assumptions and limits |
 | [PROJECT_AUDIT.md](PROJECT_AUDIT.md) | Audit of the original codebase and the defects found in it |
 | [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | Per-module status, what changed at each stage |
