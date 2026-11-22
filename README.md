@@ -1,76 +1,254 @@
 # MoleculeMind
 
-**An Uncertainty-Aware, Human-in-the-Loop Platform for Multi-Objective Molecular Discovery**
+**An uncertainty-aware, human-in-the-loop platform for multi-objective molecular discovery.**
 
-MoleculeMind accelerates small-molecule drug discovery by combining genuine machine learning models with rigorous conformal uncertainty bounds, applicability-domain novelty detection, interactive Pareto frontier optimization, and Bayesian active learning.
+MoleculeMind helps a chemist decide **which molecules to measure next**, and is
+honest about how much its own advice should be trusted. It predicts molecular
+properties, attaches calibrated uncertainty to every prediction, warns when a
+molecule falls outside what the models actually know, finds the genuine
+trade-offs between competing objectives, and plans experiments against a budget.
 
----
-
-## Key Platform Capabilities
-
-1. **Molecular Analyzer**:
-   - SMILES input with instant validation and canonicalization via **RDKit**.
-   - Dual-view structural visualization: publication-quality 2D vector SVG + interactive 3D conformer generation (**MMFF94 force-field geometry optimization** rendered with **3Dmol.js**).
-   - Physicochemical descriptors: MW, LogP, TPSA, QED Drug-Likeness, H-Bond Donors/Acceptors, Rotatable Bonds, Rings, Fraction Csp3.
-   - Lipinski's Rule of 5 and Veber Bioavailability Rule evaluation.
-
-2. **Property Prediction**:
-   - Genuine baseline model trained on the authentic **Delaney ESOL dataset** (1,128 compounds).
-   - Test set evaluation: **$R^2 = 0.894$**, **$\text{RMSE} = 0.704$**, **$\text{MAE} = 0.482$**.
-   - Never displays fabricated results.
-
-3. **Uncertainty Engine (Conformal Prediction)**:
-   - Inductive Conformal Prediction (ICP) calibrated on held-out calibration compounds.
-   - Provides finite-sample, distribution-free confidence intervals at **80%, 90%, and 95%** confidence levels ($P(Y \in [L, U]) \ge 1 - \alpha$).
-   - Heteroscedastic tree-ensemble variance scaling.
-
-4. **Applicability-Domain (AD) Detection**:
-   - Quantifies chemical space extrapolation risk.
-   - 1024-bit Morgan Fingerprint (ECFP4) Tanimoto similarity to the nearest Delaney training set neighbor ($S_{max}$).
-   - PCA chemical leverage ($h$) evaluated against the standard **OECD Guideline cutoff** ($h^* = \frac{3(p+1)}{n}$).
-   - Identifies the nearest reference analog in the training set with measured experimental values.
-
-5. **Pareto Laboratory**:
-   - Multi-objective non-dominated sorting across Biological Activity ($pIC_{50}$), Aqueous Solubility ($\log S$), Toxicity Risk, and Drug-Likeness (QED).
-   - Interactive 2D trade-off scatter plot with step-envelope Pareto Frontier.
-   - Interactive 3D multi-objective discovery cube via **Plotly**.
-   - Real-time candidate inspection matrix.
-
-6. **Active Learning (Human-in-the-Loop)**:
-   - Bayesian Optimization powered by **BoTorch** (`SingleTaskGP`).
-   - Acquisition policies: Upper Confidence Bound (qUCB with adjustable $\beta$), Expected Improvement (EI), Pure Epistemic Uncertainty Sampling (Max $\sigma$), and Multi-Objective Hypervolume.
-   - Simulated laboratory assays: reveals experimental results, updates the Gaussian Process posterior, logs the discovery round, and refines rankings.
+> ### New here? Read [LEARNING_GUIDE.md](LEARNING_GUIDE.md).
+> It explains the entire project from first principles — what a SMILES string is,
+> through to how the experiment planner works — assuming no background in
+> chemistry or machine learning. It is the best place to start.
 
 ---
 
-## Tech Stack
-
-* **Frontend**: React 19, TypeScript, Vite, Tailwind CSS v4, Lucide Icons, Plotly.js, 3Dmol.js
-* **Backend**: Python 3.14, FastAPI, Uvicorn, Pydantic
-* **Cheminformatics**: RDKit (`rdkit-2026.9.1`)
-* **Machine Learning**: PyTorch (`torch-2.15.0`), Chemprop, Scikit-learn
-* **Bayesian Optimization**: BoTorch (`botorch-0.18.1`), GPyTorch
-
----
-
-## Quickstart & Launch
-
-### 1. Launch Platform (Single Command)
-The frontend has been compiled and is served directly by the FastAPI backend:
+## Quick start
 
 ```bash
+pip install -r requirements.txt
 python run.py
 ```
 
-Open your browser at:
-* **Dashboard**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-* **Interactive API Docs**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+Open <http://127.0.0.1:8000>. Interactive API documentation at `/docs`.
 
-### 2. Frontend Development Server (Optional)
-If modifying React components with hot module reloading:
+**The first launch takes about 3 minutes** while it trains and caches the
+models. Every launch after that takes about a second. To skip the two expensive
+optional models:
 
 ```bash
-cd frontend
-npm run dev
+MOLECULEMIND_ENABLE_DMPNN=false MOLECULEMIND_ENABLE_GENERATOR=false python run.py
 ```
-Access the Vite dev server at `http://localhost:5173` (proxies `/api` to port 8000).
+
+Run the tests:
+
+```bash
+python -m pytest -q        # 309 tests
+```
+
+---
+
+## What it actually does
+
+| Capability | What you get | Status |
+|---|---|---|
+| **Molecular Analyzer** | SMILES validation, 13 descriptors, Lipinski and Veber checks, 2D rendering, computed 3D conformer | Complete |
+| **Property prediction** | Water solubility (logS) and clinical-trial toxicity risk, every value tagged with its provenance | Complete |
+| **Conformal uncertainty** | Prediction intervals with a measured coverage guarantee; prediction sets for classification | Complete |
+| **Applicability domain** | Two independent checks on whether a molecule is the kind of thing the models know, with thresholds derived from the training data | Complete |
+| **Pareto Laboratory** | Non-dominated sorting over validated objectives, interactive 2D/3D trade-off plots | Complete |
+| **Probabilistic Pareto** | Probability each candidate is on the front, given its calibrated uncertainty | Complete |
+| **Risk slider** | Live exploit-versus-explore re-ranking | Complete |
+| **Budget planner** | Cost-aware experiment plan by Expected Hypervolume Improvement, verified against BoTorch | Complete |
+| **Active learning** | Gaussian-process surrogate with four acquisition strategies, simulated assays | Complete |
+| **D-MPNN ensemble** | Graph neural network with calibrated per-molecule uncertainty and a learned latent space | Complete; **matches, does not beat, the baseline** |
+| **Molecular generator** | SMILES language model with REINVENT-style reinforcement learning | Implemented; **MOSES pre-training pending**, so validity is 46–78% |
+| **Benchmarking** | All metrics computed at startup from held-out splits; JSON/CSV report download | Complete |
+
+---
+
+## Measured results
+
+Reproducible with seed 42 via `python -m pytest -q` or `GET /api/benchmark/report`.
+
+### Solubility (Delaney ESOL, 1,117 unique molecules after deduplication)
+
+| Model | Representation | Split | R² | RMSE |
+|---|---|---|---|---|
+| Extra Trees (baseline) | ECFP4 + 8 descriptors | random | **0.903** | 0.666 |
+| Extra Trees | ECFP4 + 8 descriptors | Bemis–Murcko scaffold | 0.890 | 0.746 |
+| D-MPNN ensemble (5 members) | molecular graph, learned | random, pinned to baseline | 0.902 | 0.669 |
+| Random Forest (independent check) | ECFP4 + 8 descriptors | same held-out molecules | 0.877 | — |
+
+### Conformal coverage (138 held-out molecules)
+
+| Nominal | Measured | Mean interval width |
+|---|---|---|
+| 80% | 78.3% | 1.60 logS |
+| 90% | 88.4% | 2.14 logS |
+| 95% | 99.3% | 3.36 logS |
+
+### Toxicity (ClinTox CT_TOX, 103 positives of 1,461)
+
+| Model | ROC-AUC | PR-AUC | Baseline rate |
+|---|---|---|---|
+| Random Forest, single-task | 0.832 | 0.358 | 0.072 |
+| D-MPNN, multi-task | 0.866 | — | — |
+
+### Verification of the EHVI planner
+
+Agrees with BoTorch's own `qExpectedHypervolumeImprovement` to **0.24%** on a
+shared posterior, and matches closed-form Expected Improvement in the
+single-objective case. Live at `GET /api/planner/validate-ehvi`.
+
+---
+
+## Honesty commitments
+
+These are design rules the codebase enforces, not aspirations.
+
+* **Every property carries a `provenance` field** — `model`, `computed`, or
+  `unavailable`. Nothing is returned as a prediction unless a trained, evaluated
+  model produced it.
+* **Properties without a validated model return no number.** Target bioactivity
+  (pIC50) and metabolic stability are marked `unavailable` with a reason,
+  because no suitable dataset is bundled. Earlier versions returned hand-written
+  descriptor arithmetic for both; see [PROJECT_AUDIT.md](PROJECT_AUDIT.md) §10.4.
+* **Only validated objectives enter the optimisation.** Missing values raise an
+  error rather than being imputed.
+* **Simulated assays are labelled `mode: "simulated"`** with an explicit note
+  that no laboratory experiment was performed.
+* **Hidden oracle values never leave the server.** One guarded serialisation
+  path, with tests that scan the whole API response.
+* **No metric is hardcoded.** Everything is computed at startup from a held-out
+  split, and the landing page fetches its figures from the API.
+* **Assumptions are measured where possible.** The probabilistic Pareto front
+  assumes a Gaussian error shape; we test that assumption on real residuals, it
+  fails, and the interface says so.
+* **Where an estimate cannot be made honestly, the API refuses.** Correlated
+  objective sampling returns HTTP 501 rather than using an invented correlation
+  matrix.
+
+---
+
+## Known limitations
+
+* **Interval widths are wide.** A 90% solubility interval spans ~2.1 logS. This
+  is the honest state of property prediction from ~1,100 training molecules.
+* **Single seed.** All metrics come from seed 42. No confidence intervals on R².
+* **The scaffold split is weaker than it looks.** ESOL contains many acyclic
+  molecules, each forming its own single-member scaffold group, so that portion
+  of the split behaves like a random one. Do not read 0.890 as strong
+  generalisation to new chemotypes.
+* **The Gaussian shape assumption behind probabilistic Pareto is violated**
+  (excess kurtosis 1.416, normality rejected), making those probabilities mildly
+  optimistic in the tails.
+* **Generator validity is 46–78%** because MOSES is not bundled. A
+  data limitation, not a code limitation — see
+  [scripts/download_moses.py](scripts/download_moses.py).
+* **ClinTox `CT_TOX` means "trial terminated for toxicity"**, not "molecule is
+  toxic". Aspirin is labelled positive in this dataset. Predictions are
+  uncalibrated probabilities and are not clinical assessments.
+* **Pareto sorting is O(n²)** and will not scale past a few thousand candidates.
+* **No frontend tests.** TypeScript compiles and the production build is clean,
+  and the tabs were exercised manually, but there is no automated browser test.
+
+---
+
+## Not implemented
+
+Deliberately stopped here rather than adding modules of diminishing value.
+
+| Module | Why not |
+|---|---|
+| Docking surrogate + AutoDock Vina | Requires DOCKSTRING data and a Vina installation |
+| Retrosynthesis routes | Requires AiZynthFinder |
+| Target bioactivity QSAR | Requires a curated ChEMBL assay dataset |
+| Counterfactual molecular editing | Unblocked, simply not built |
+| Objective-conflict attribution | Unblocked, simply not built |
+| MLflow experiment tracking | Unblocked, simply not built |
+| Team accounts and collaboration | Needs a database and auth layer |
+
+---
+
+## Documentation
+
+| File | What it is for |
+|---|---|
+| **[LEARNING_GUIDE.md](LEARNING_GUIDE.md)** | **Start here.** The whole project from first principles, plus a glossary and likely examiner questions |
+| [SCIENTIFIC_METHODOLOGY.md](SCIENTIFIC_METHODOLOGY.md) | Every algorithm's mathematics, assumptions and limits |
+| [PROJECT_AUDIT.md](PROJECT_AUDIT.md) | Audit of the original codebase and the defects found in it |
+| [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | Per-module status, what changed at each stage |
+| [TEST_REPORT.md](TEST_REPORT.md) | Test results, what each suite verifies, coverage gaps |
+
+---
+
+## Architecture
+
+```
+run.py                        uvicorn launcher; serves API + built frontend on :8000
+backend/
+  data/                       Delaney ESOL, ClinTox, Lipophilicity (CSV)
+  artifacts/                  trained-model cache (gitignored, regenerated)
+  app/
+    main.py                   FastAPI, 24 endpoints
+    core/
+      config.py               every setting, overridable via MOLECULEMIND_*
+      mol_analyzer.py         SMILES, descriptors, 2D/3D rendering
+      dataset.py              loading, dedup, splits, featurisation
+      models.py               training, persistence, prediction with provenance
+      conformal.py            intervals and prediction sets
+      applicability_domain.py the two trust diagnostics
+      pareto.py               dominance and non-dominated sorting
+      probabilistic_pareto.py Monte Carlo front, risk slider
+      experiment_planner.py   hypervolume, EHVI, budget planning
+      active_learning.py      GP surrogate, acquisition, hidden oracle
+      molecular_graph.py      molecules as directed graphs
+      dmpnn.py                the graph network, losses, ensemble
+      dmpnn_service.py        multi-task training and evaluation
+      generator.py            SMILES language model and RL
+      generator_service.py    uncertainty-aware reward
+  tests/                      309 tests across 9 files
+frontend/
+  src/components/             six tabs; dist/ is prebuilt and served by FastAPI
+scripts/download_moses.py     how to obtain MOSES for the generator
+```
+
+### Configuration
+
+Every setting in `config.py` is overridable by a `MOLECULEMIND_`-prefixed
+environment variable:
+
+```bash
+MOLECULEMIND_SEED=7                    # change the random seed
+MOLECULEMIND_ESOL_TREES=50             # smaller, faster forest
+MOLECULEMIND_USE_MODEL_CACHE=false     # force a full retrain
+MOLECULEMIND_ENABLE_DMPNN=false        # skip the graph network
+MOLECULEMIND_ENABLE_GENERATOR=false    # skip the generator
+MOLECULEMIND_LOG_LEVEL=DEBUG
+```
+
+### Frontend development
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Vite serves on `:5173` and proxies `/api` to `:8000`, so run the backend too.
+After changing components, `npm run build` refreshes `dist/`, which is what
+`python run.py` serves.
+
+---
+
+## Stack
+
+* **Frontend** — React 19, TypeScript, Vite, Tailwind CSS v4, Plotly.js, 3Dmol.js (vendored locally), Framer Motion
+* **Backend** — Python 3.14, FastAPI, Uvicorn, Pydantic v2
+* **Cheminformatics** — RDKit
+* **Machine learning** — scikit-learn (Extra Trees, Random Forest, PCA), PyTorch (D-MPNN, generator)
+* **Bayesian optimisation** — BoTorch, GPyTorch (Gaussian processes, exact hypervolume)
+* **Testing** — pytest, httpx
+
+---
+
+## Data provenance
+
+| Dataset | Source | Used for |
+|---|---|---|
+| Delaney ESOL (1,128 rows) | Delaney 2004, via MoleculeNet | Solubility model, applicability domain, active-learning pool |
+| ClinTox (1,484 rows) | Gayvert et al. 2016, via MoleculeNet | Toxicity classifier, multi-task training |
+| Lipophilicity (4,200 rows) | ChEMBL, via MoleculeNet | Present but unused |
+
+No dataset is downloaded at runtime. All three ship with the repository.
