@@ -125,8 +125,10 @@ export const ActiveLearningTab: React.FC<ActiveLearningProps> = ({ onSelectCandi
 
   const rankedUnassayed = [...unassayed].sort((a: any, b: any) => (b.acquisition_score || 0) - (a.acquisition_score || 0));
 
-  const bestDiscovered = assayed.length > 0 
-    ? [...assayed].sort((a, b) => b.true_pic50 - a.true_pic50)[0] 
+  // Only measurements released by an executed assay are available here; the
+  // hidden oracle is held server-side and is never sent to the client.
+  const bestDiscovered = assayed.length > 0
+    ? [...assayed].sort((a: any, b: any) => (b.measured_value ?? -Infinity) - (a.measured_value ?? -Infinity))[0]
     : null;
 
   const strategyExplanations: Record<string, { title: string; simple: string; math: string }> = {
@@ -241,7 +243,9 @@ export const ActiveLearningTab: React.FC<ActiveLearningProps> = ({ onSelectCandi
             {bestDiscovered ? bestDiscovered.name : 'None yet'}
           </div>
           <div className="text-[11px] text-slate-400 mt-1 font-mono">
-            pIC50: <strong className="text-white">{bestDiscovered?.true_pic50}</strong> (Sol: {bestDiscovered?.true_solubility})
+            {bestDiscovered
+              ? <>Measured logS: <strong className="text-white">{bestDiscovered.measured_value}</strong> (round {bestDiscovered.assay_round})</>
+              : 'Run an assay to reveal a measurement'}
           </div>
         </div>
 
@@ -420,7 +424,7 @@ export const ActiveLearningTab: React.FC<ActiveLearningProps> = ({ onSelectCandi
             {data.history.map((h: any, i: number) => (
               <div key={i} className="bg-black/40 p-4 rounded-2xl border border-white/[0.06] shrink-0 min-w-[200px]">
                 <div className="text-[10px] text-slate-400 uppercase tracking-wider">Round {h.round}</div>
-                <div className="text-white font-medium text-base mt-1">Max pIC50: {h.max_pic50}</div>
+                <div className="text-white font-medium text-base mt-1">Best logS: {h.best_revealed_logs ?? '—'}</div>
                 <div className="text-xs text-slate-300 truncate mt-1">{h.best_compound}</div>
               </div>
             ))}
@@ -497,7 +501,7 @@ export const ActiveLearningTab: React.FC<ActiveLearningProps> = ({ onSelectCandi
                       {c.acquisition_score !== null ? c.acquisition_score : '—'}
                     </td>
                     <td className="py-3 px-4 text-slate-200">
-                      {c.predicted_utility !== null ? c.predicted_utility : '—'}
+                      {c.predicted_value !== null && c.predicted_value !== undefined ? c.predicted_value : '—'}
                     </td>
                     <td className="py-3 px-4 text-amber-300">
                       ±{c.uncertainty_sigma !== null ? c.uncertainty_sigma : '—'}

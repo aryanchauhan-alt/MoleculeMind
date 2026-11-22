@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 
 interface WorkflowGuideProps {
-  currentTab: 'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark';
-  onNavigateTab: (tab: 'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark') => void;
+  currentTab: 'analyzer' | 'prediction' | 'pareto' | 'discovery' | 'active_learning' | 'benchmark';
+  onNavigateTab: (tab: 'analyzer' | 'prediction' | 'pareto' | 'discovery' | 'active_learning' | 'benchmark') => void;
   activeSmiles?: string;
 }
 

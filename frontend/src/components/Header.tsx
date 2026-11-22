@@ -7,13 +7,14 @@ import {
   Cpu, 
   BarChart2,
   BookOpen,
-  ArrowUpRight
+  ArrowUpRight,
+  TrendingUp,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface HeaderProps {
-  activeTab: 'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark';
-  setActiveTab: (tab: 'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark') => void;
+  activeTab: 'analyzer' | 'prediction' | 'pareto' | 'discovery' | 'active_learning' | 'benchmark';
+  setActiveTab: (tab: 'analyzer' | 'prediction' | 'pareto' | 'discovery' | 'active_learning' | 'benchmark') => void;
   onReturnToLanding: () => void;
   onOpenGlossary: () => void;
   backendHealthy: boolean;
@@ -30,8 +31,9 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'analyzer' as const, num: '01', label: 'Molecular Analyzer', shortLabel: 'Analyzer', icon: FlaskConical },
     { id: 'prediction' as const, num: '02', label: 'Prediction & Conformal', shortLabel: 'Prediction', icon: Activity },
     { id: 'pareto' as const, num: '03', label: 'Pareto Lab', shortLabel: 'Pareto', icon: GitCompare },
-    { id: 'active_learning' as const, num: '04', label: 'Active Learning', shortLabel: 'Active ML', icon: Cpu },
-    { id: 'benchmark' as const, num: '05', label: 'ESOL Benchmark', shortLabel: 'Benchmark', icon: BarChart2 }
+    { id: 'discovery' as const, num: '04', label: 'Discovery Engine', shortLabel: 'Discovery', icon: TrendingUp },
+    { id: 'active_learning' as const, num: '05', label: 'Active Learning', shortLabel: 'Active ML', icon: Cpu },
+    { id: 'benchmark' as const, num: '06', label: 'Benchmarking', shortLabel: 'Benchmark', icon: BarChart2 }
   ];
 
   return (

@@ -8,13 +8,14 @@ import { PropertyPredictionTab } from './components/PropertyPredictionTab';
 import { ParetoLaboratoryTab } from './components/ParetoLaboratoryTab';
 import { ActiveLearningTab } from './components/ActiveLearningTab';
 import { BenchmarkTab } from './components/BenchmarkTab';
+import { DiscoveryEngineTab } from './components/DiscoveryEngineTab';
 import { ConceptHelpModal } from './components/ScientificTooltip';
 import { AgencyCursor } from './components/AgencyCursor';
 import { Atom } from 'lucide-react';
 
 export function App() {
   const [currentView, setCurrentView] = useState<'landing' | 'app'>('landing');
-  const [activeTab, setActiveTab] = useState<'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark'>('analyzer');
+  const [activeTab, setActiveTab] = useState<'analyzer' | 'prediction' | 'pareto' | 'discovery' | 'active_learning' | 'benchmark'>('analyzer');
   const [backendHealthy, setBackendHealthy] = useState<boolean>(false);
   const [activeSmiles, setActiveSmiles] = useState<string>('CC(=O)Oc1ccccc1C(=O)O');
   const [isGlossaryOpen, setIsGlossaryOpen] = useState<boolean>(false);
@@ -27,7 +28,7 @@ export function App() {
         setCurrentView('app');
         if (hash.includes('tab=')) {
           const tab = hash.split('tab=')[1]?.split('&')[0];
-          if (['analyzer', 'prediction', 'pareto', 'active_learning', 'benchmark'].includes(tab)) {
+          if (['analyzer', 'prediction', 'pareto', 'discovery', 'active_learning', 'benchmark'].includes(tab)) {
             setActiveTab(tab as any);
           }
         }
@@ -49,7 +50,7 @@ export function App() {
     }
   };
 
-  const handleLaunchApp = (tab?: 'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark') => {
+  const handleLaunchApp = (tab?: 'analyzer' | 'prediction' | 'pareto' | 'discovery' | 'active_learning' | 'benchmark') => {
     const targetTab = tab || 'analyzer';
     setActiveTab(targetTab);
     setCurrentView('app');
@@ -63,7 +64,7 @@ export function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleTabChange = (tab: 'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark') => {
+  const handleTabChange = (tab: 'analyzer' | 'prediction' | 'pareto' | 'discovery' | 'active_learning' | 'benchmark') => {
     setActiveTab(tab);
     updateHash('app', tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -184,6 +185,8 @@ export function App() {
                     onSelectCandidate={handleSelectCandidate} 
                   />
                 )}
+
+                {activeTab === 'discovery' && <DiscoveryEngineTab />}
 
                 {activeTab === 'active_learning' && (
                   <ActiveLearningTab 

@@ -19,21 +19,25 @@ interface ParetoLabProps {
   onSelectCandidate?: (smiles: string) => void;
 }
 
+// Plottable axes. Bioactivity (pIC50) and metabolic half-life were removed:
+// the backend has no trained model for either and no longer returns a value for
+// them (see PROJECT_AUDIT.md 10.4). The optimised objective set is whatever
+// /api/pareto reports in `objective_specs`; these are the plot axes only.
 const PROPERTY_OPTIONS = [
-  { key: 'bioactivity_pic50', label: 'Bioactivity (pIC50)', unit: 'potency', maximize: true },
   { key: 'solubility_logs', label: 'Aqueous Solubility (logS)', unit: 'log(mol/L)', maximize: true },
   { key: 'toxicity_risk_probability', label: 'Toxicity Risk Probability', unit: 'prob', maximize: false },
   { key: 'qed_drug_likeness', label: 'QED Drug-Likeness', unit: 'score', maximize: true },
-  { key: 'metabolic_stability_half_life_min', label: 'Metabolic Half-Life (t1/2)', unit: 'min', maximize: true },
-  { key: 'molecular_weight', label: 'Molecular Weight', unit: 'g/mol', maximize: false }
+  { key: 'molecular_weight', label: 'Molecular Weight', unit: 'g/mol', maximize: false },
+  { key: 'ad_score', label: 'Applicability-Domain Score', unit: 'score', maximize: true }
 ];
 
 export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidate }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [data, setData] = useState<any | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
-  const [xAxisKey, setXAxisKey] = useState<string>('bioactivity_pic50');
+  const [xAxisKey, setXAxisKey] = useState<string>('qed_drug_likeness');
   const [yAxisKey, setYAxisKey] = useState<string>('solubility_logs');
+  const [zAxisKey, setZAxisKey] = useState<string>('toxicity_risk_probability');
   const [plotMode, setPlotMode] = useState<'2d' | '3d'>('2d');
   const [filterParetoOnly, setFilterParetoOnly] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -79,6 +83,7 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
   const allCandidates = data.candidates || [];
   const xProp = PROPERTY_OPTIONS.find(p => p.key === xAxisKey) || PROPERTY_OPTIONS[0];
   const yProp = PROPERTY_OPTIONS.find(p => p.key === yAxisKey) || PROPERTY_OPTIONS[1];
+  const zProp = PROPERTY_OPTIONS.find(p => p.key === zAxisKey) || PROPERTY_OPTIONS[2];
 
   const filteredBySearch = allCandidates.filter((c: any) => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -120,7 +125,7 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
     y: paretoPoints.map((c: any) => c[yAxisKey]),
     customdata: paretoPoints.map((c: any) => c.id),
     text: paretoPoints.map((c: any) => 
-      `<b>${c.name} ★ PARETO OPTIMAL</b><br>ID: ${c.id}<br>${xProp.label}: ${c[xAxisKey]}<br>${yProp.label}: ${c[yAxisKey]}<br>Toxicity Risk: ${Math.round(c.toxicity_risk_probability * 100)}%<br>Composite Score: ${c.composite_score}/100`
+      `<b>${c.name} ★ PARETO OPTIMAL</b><br>ID: ${c.id}<br>${xProp.label}: ${c[xAxisKey]}<br>${yProp.label}: ${c[yAxisKey]}<br>Composite Score: ${c.composite_score}/100`
     ),
     hoverinfo: 'text',
     mode: 'markers',
@@ -151,12 +156,12 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
 
   // 3D Plotly Traces
   const trace3DDominated = {
-    x: dominatedPoints.map((c: any) => c.bioactivity_pic50),
-    y: dominatedPoints.map((c: any) => c.solubility_logs),
-    z: dominatedPoints.map((c: any) => c.toxicity_risk_probability),
+    x: dominatedPoints.map((c: any) => c[xAxisKey]),
+    y: dominatedPoints.map((c: any) => c[yAxisKey]),
+    z: dominatedPoints.map((c: any) => c[zAxisKey]),
     customdata: dominatedPoints.map((c: any) => c.id),
-    text: dominatedPoints.map((c: any) => 
-      `<b>${c.name}</b><br>pIC50: ${c.bioactivity_pic50}<br>logS: ${c.solubility_logs}<br>Tox: ${Math.round(c.toxicity_risk_probability * 100)}%`
+    text: dominatedPoints.map((c: any) =>
+      `<b>${c.name}</b><br>${xProp.label}: ${c[xAxisKey]}<br>${yProp.label}: ${c[yAxisKey]}<br>${zProp.label}: ${c[zAxisKey]}`
     ),
     hoverinfo: 'text',
     mode: 'markers',
@@ -170,12 +175,12 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
   };
 
   const trace3DPareto = {
-    x: paretoPoints.map((c: any) => c.bioactivity_pic50),
-    y: paretoPoints.map((c: any) => c.solubility_logs),
-    z: paretoPoints.map((c: any) => c.toxicity_risk_probability),
+    x: paretoPoints.map((c: any) => c[xAxisKey]),
+    y: paretoPoints.map((c: any) => c[yAxisKey]),
+    z: paretoPoints.map((c: any) => c[zAxisKey]),
     customdata: paretoPoints.map((c: any) => c.id),
-    text: paretoPoints.map((c: any) => 
-      `<b>${c.name} ★ PARETO</b><br>pIC50: ${c.bioactivity_pic50}<br>logS: ${c.solubility_logs}<br>Tox: ${Math.round(c.toxicity_risk_probability * 100)}%`
+    text: paretoPoints.map((c: any) =>
+      `<b>${c.name} ★ PARETO</b><br>${xProp.label}: ${c[xAxisKey]}<br>${yProp.label}: ${c[yAxisKey]}<br>${zProp.label}: ${c[zAxisKey]}`
     ),
     hoverinfo: 'text',
     mode: 'markers',
@@ -222,9 +227,9 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
     paper_bgcolor: 'rgba(0,0,0,0)',
     margin: { l: 0, r: 0, t: 0, b: 0 },
     scene: {
-      xaxis: { title: 'Bioactivity (pIC50)', gridcolor: 'rgba(255,255,255,0.06)', color: '#e2e8f0', backgroundcolor: 'rgba(8, 9, 14, 0.8)' },
-      yaxis: { title: 'Solubility (logS)', gridcolor: 'rgba(255,255,255,0.06)', color: '#e2e8f0', backgroundcolor: 'rgba(8, 9, 14, 0.8)' },
-      zaxis: { title: 'Toxicity Risk (min)', gridcolor: 'rgba(255,255,255,0.06)', color: '#e2e8f0', backgroundcolor: 'rgba(8, 9, 14, 0.8)' }
+      xaxis: { title: xProp.label, gridcolor: 'rgba(255,255,255,0.06)', color: '#e2e8f0', backgroundcolor: 'rgba(8, 9, 14, 0.8)' },
+      yaxis: { title: yProp.label, gridcolor: 'rgba(255,255,255,0.06)', color: '#e2e8f0', backgroundcolor: 'rgba(8, 9, 14, 0.8)' },
+      zaxis: { title: zProp.label, gridcolor: 'rgba(255,255,255,0.06)', color: '#e2e8f0', backgroundcolor: 'rgba(8, 9, 14, 0.8)' }
     },
     showlegend: true,
     legend: {
@@ -350,8 +355,8 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
                   </button>
                 </div>
 
-                {/* Axis Selectors for 2D Mode */}
-                {plotMode === '2d' && (
+                {/* Axis selectors: X/Y in both modes, Z only for the 3D view */}
+                {(
                   <div className="flex items-center gap-2 text-xs">
                     <div className="flex items-center gap-1.5 bg-black/40 px-3 py-1.5 rounded-full border border-white/[0.08]">
                       <span className="text-slate-400 font-mono">X:</span>
@@ -378,6 +383,21 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
                         ))}
                       </select>
                     </div>
+
+                    {plotMode === '3d' && (
+                      <div className="flex items-center gap-1.5 bg-black/40 px-3 py-1.5 rounded-full border border-white/[0.08]">
+                        <span className="text-slate-400 font-mono">Z:</span>
+                        <select
+                          value={zAxisKey}
+                          onChange={(e) => setZAxisKey(e.target.value)}
+                          className="bg-transparent text-white text-xs focus:outline-none cursor-pointer"
+                        >
+                          {PROPERTY_OPTIONS.map((p) => (
+                            <option key={p.key} value={p.key} className="bg-zinc-900 text-white">{p.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -469,11 +489,11 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
                   <p className="text-slate-300 text-[11px] leading-relaxed">
                     {selectedCandidate.is_pareto_optimal ? (
                       <>
-                        <strong>Non-dominated lead:</strong> Exhibits high binding potency (pIC50 = {selectedCandidate.bioactivity_pic50}) without exceeding clinical toxicity thresholds ({Math.round(selectedCandidate.toxicity_risk_probability * 100)}%). Cannot be replaced without compromising either solubility or affinity.
+                        <strong>Non-dominated lead:</strong> No other candidate in the pool is at least as good on every active objective and strictly better on one. Improving any objective from here requires giving ground on another. Active objectives: {(data?.objectives || []).join(', ')}.
                       </>
                     ) : (
                       <>
-                        <strong>Sub-optimal lead:</strong> Dominated by Rank 1 compounds that achieve superior bioactivity and solubility at equivalent or lower toxicity risk.
+                        <strong>Dominated (rank {selectedCandidate.pareto_rank}):</strong> At least one rank-1 candidate matches or beats this compound on every active objective and beats it on at least one.
                       </>
                     )}
                   </p>
@@ -482,9 +502,9 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
                 {/* Property Grid */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="bg-black/40 p-3 rounded-xl border border-white/[0.06]">
-                    <span className="text-slate-400 font-mono">Bioactivity pIC50</span>
+                    <span className="text-slate-400 font-mono">AD Reliability</span>
                     <div className="text-base font-mono text-cyan-300 mt-0.5">
-                      {selectedCandidate.bioactivity_pic50}
+                      {selectedCandidate.ad_score}
                     </div>
                   </div>
                   <div className="bg-black/40 p-3 rounded-xl border border-white/[0.06]">
@@ -582,7 +602,7 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
                 <th className="py-3 px-4">Compound</th>
                 <th className="py-3 px-4">Pareto Status</th>
                 <th className="py-3 px-4">Composite</th>
-                <th className="py-3 px-4">Bioactivity</th>
+                <th className="py-3 px-4">AD Score</th>
                 <th className="py-3 px-4">Solubility</th>
                 <th className="py-3 px-4">Tox Risk</th>
                 <th className="py-3 px-4">QED</th>
@@ -618,7 +638,7 @@ export const ParetoLaboratoryTab: React.FC<ParetoLabProps> = ({ onSelectCandidat
                       {c.composite_score}
                     </td>
                     <td className="py-3 px-4 text-cyan-300">
-                      {c.bioactivity_pic50}
+                      {c.ad_score}
                     </td>
                     <td className="py-3 px-4 text-slate-200">
                       {c.solubility_logs} <span className="text-[10px] text-slate-400">[{c.solubility_lower_90}, {c.solubility_upper_90}]</span>

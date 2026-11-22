@@ -13,10 +13,47 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
-  Clock,
+  Ban,
+  Network,
   FlaskConical,
   ArrowRight
 } from 'lucide-react';
+
+// Display metadata for each property key. Values, units, provenance and caveats
+// all come from the backend; this map only controls presentation.
+const PROPERTY_META: Record<string, any> = {
+  solubility_logs: {
+    tooltipId: 'solubility',
+    color: 'text-cyan-300',
+    bar: 'bg-cyan-400',
+    format: (v: number) => v,
+    // logS roughly spans -8 (insoluble) to +2 (very soluble)
+    toPercent: (v: number) => ((v + 8) / 10) * 100
+  },
+  toxicity_risk_probability: {
+    tooltipId: 'toxicity',
+    color: 'text-white',
+    bar: 'bg-rose-400',
+    format: (v: number) => `${Math.round(v * 100)}%`,
+    toPercent: (v: number) => v * 100
+  },
+  qed_drug_likeness: {
+    tooltipId: 'qed',
+    color: 'text-emerald-400',
+    bar: 'bg-emerald-400',
+    format: (v: number) => v,
+    toPercent: (v: number) => v * 100
+  }
+};
+
+// Order the profile so available properties are shown before unavailable ones.
+const PROPERTY_ORDER = [
+  'solubility_logs',
+  'toxicity_risk_probability',
+  'qed_drug_likeness',
+  'bioactivity_pic50',
+  'metabolic_stability'
+];
 
 interface PredictionProps {
   initialSmiles?: string;
@@ -41,6 +78,18 @@ export const PropertyPredictionTab: React.FC<PredictionProps> = ({ initialSmiles
   const [selectedConfidence, setSelectedConfidence] = useState<'80%' | '90%' | '95%'>('90%');
   const [showConformalMath, setShowConformalMath] = useState<boolean>(false);
   const [showLeverageDetails, setShowLeverageDetails] = useState<boolean>(false);
+
+  // Properties come from the backend keyed by name, each carrying its own
+  // status/provenance. Unknown keys are tolerated so the UI does not need a
+  // redeploy when a new model is added.
+  const propEntries: [string, any][] = result?.properties
+    ? Object.entries(result.properties as Record<string, any>)
+    : [];
+  const allProps = [...propEntries].sort(
+    (a, b) =>
+      (PROPERTY_ORDER.indexOf(a[0]) + 1 || 99) - (PROPERTY_ORDER.indexOf(b[0]) + 1 || 99)
+  );
+  const availableProps = allProps.filter(([, p]) => p.status === 'available');
 
   const handlePredict = async (targetSmiles?: string) => {
     const s = targetSmiles || smiles;
@@ -482,138 +531,213 @@ export const PropertyPredictionTab: React.FC<PredictionProps> = ({ initialSmiles
                 <Dna className="w-5 h-5 text-slate-300" />
                 <div>
                   <h3 className="font-medium text-white text-base">Multi-Objective Profile</h3>
-                  <p className="text-xs text-slate-400">Holistic pharmaceutical criteria evaluating Potency, Toxicity, Solubility & Clearance</p>
+                  <p className="text-xs text-slate-400">
+                    Every value is labelled with its provenance. Properties without a trained,
+                    evaluated model are shown as unavailable rather than estimated.
+                  </p>
                 </div>
               </div>
-              <span className="text-xs font-mono text-slate-400">4-Objective Pareto Modeling</span>
+              <span className="text-xs font-mono text-slate-400">
+                {availableProps.length} of {allProps.length} objectives available
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Biological Activity (pIC50) */}
-              <div className="bg-black/40 p-5 rounded-2xl border border-white/[0.06] flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                    <span>Bioactivity (pIC50)</span>
-                    <ScientificTooltip id="pic50" />
-                  </div>
-                  <div className="text-2xl font-light font-mono text-cyan-300 mt-1">
-                    {result.multi_objective_profile.bioactivity_pic50}
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                    Potency (-log10 M)
-                  </div>
-                </div>
+              {allProps.map(([key, prop]: [string, any]) => {
+                const isAvailable = prop.status === 'available';
+                const meta = PROPERTY_META[key] || {};
 
-                <div className="mt-4">
-                  <div className="flex justify-between text-[10px] text-slate-400 font-mono mb-1">
-                    <span>Weak (4.0)</span>
-                    <span>Nanomolar (9.0+)</span>
-                  </div>
-                  <div className="w-full bg-white/[0.05] h-1.5 rounded-full overflow-hidden border border-white/[0.08]">
-                    <div 
-                      className="bg-cyan-400 h-full" 
-                      style={{ width: `${Math.min(100, Math.max(0, (result.multi_objective_profile.bioactivity_pic50 - 4.0) * 18))}%` }} 
-                    />
-                  </div>
-                </div>
-              </div>
+                if (!isAvailable) {
+                  return (
+                    <div
+                      key={key}
+                      className="bg-black/20 p-5 rounded-2xl border border-dashed border-white/[0.10] flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
+                          <span>{prop.property_name}</span>
+                          <Ban className="w-3.5 h-3.5 text-slate-600" />
+                        </div>
+                        <div className="text-base font-mono text-slate-500 mt-2">Unavailable</div>
+                        <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">{prop.reason}</p>
+                      </div>
+                      {prop.required_to_enable && (
+                        <div className="mt-3 pt-3 border-t border-white/[0.06] text-[10px] text-slate-500 font-mono">
+                          Requires: {prop.required_to_enable}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
 
-              {/* Toxicity Risk */}
-              <div className="bg-black/40 p-5 rounded-2xl border border-white/[0.06] flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                    <span>Clinical Toxicity</span>
-                    <ScientificTooltip id="toxicity" />
-                  </div>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-2xl font-light font-mono text-white">
-                      {Math.round(result.multi_objective_profile.toxicity_risk_probability * 100)}%
-                    </span>
-                    <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border ${
-                      result.multi_objective_profile.toxicity_risk_probability < 0.25 
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                        : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
-                    }`}>
-                      {result.multi_objective_profile.toxicity_category}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                    ClinTox failure risk
-                  </div>
-                </div>
+                const pct = meta.toPercent ? meta.toPercent(prop.value) : 0;
+                return (
+                  <div
+                    key={key}
+                    className="bg-black/40 p-5 rounded-2xl border border-white/[0.06] flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+                        <span>{prop.property_name}</span>
+                        {meta.tooltipId ? <ScientificTooltip id={meta.tooltipId} /> : null}
+                      </div>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <span className={`text-2xl font-light font-mono ${meta.color || 'text-white'}`}>
+                          {meta.format ? meta.format(prop.value) : prop.value}
+                        </span>
+                        {prop.category && (
+                          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border bg-white/[0.05] text-slate-300 border-white/[0.1]">
+                            {prop.category}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <span
+                          className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                            prop.provenance === 'model'
+                              ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20'
+                              : 'bg-slate-500/10 text-slate-300 border-slate-500/20'
+                          }`}
+                          title={prop.model}
+                        >
+                          {prop.provenance === 'model' ? 'Predicted' : 'Computed'}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono">{prop.unit}</span>
+                      </div>
+                      {prop.caveat && (
+                        <p className="text-[10px] text-amber-300/70 mt-2 leading-relaxed">{prop.caveat}</p>
+                      )}
+                    </div>
 
-                <div className="mt-4">
-                  <div className="flex justify-between text-[10px] text-slate-400 font-mono mb-1">
-                    <span>Safe (&lt; 20%)</span>
-                    <span>High Risk</span>
+                    <div className="mt-4">
+                      <div className="w-full bg-white/[0.05] h-1.5 rounded-full overflow-hidden border border-white/[0.08]">
+                        <div
+                          className={`h-full ${meta.bar || 'bg-slate-400'}`}
+                          style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                        />
+                      </div>
+                      {prop.metrics && (prop.metrics.roc_auc || prop.metrics.pr_auc) && (
+                        <div className="text-[10px] text-slate-500 font-mono mt-1.5">
+                          Model: ROC-AUC {prop.metrics.roc_auc} · PR-AUC {prop.metrics.pr_auc}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="w-full bg-white/[0.05] h-1.5 rounded-full overflow-hidden border border-white/[0.08]">
-                    <div 
-                      className={`h-full ${result.multi_objective_profile.toxicity_risk_probability < 0.25 ? 'bg-emerald-400' : 'bg-rose-400'}`} 
-                      style={{ width: `${Math.round(result.multi_objective_profile.toxicity_risk_probability * 100)}%` }} 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Metabolic Stability */}
-              <div className="bg-black/40 p-5 rounded-2xl border border-white/[0.06] flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                    <span>Metabolic Half-Life</span>
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  </div>
-                  <div className="text-2xl font-light font-mono text-white mt-1">
-                    {result.multi_objective_profile.metabolic_stability_half_life_min} <span className="text-xs font-normal text-slate-400">min</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                    Microsomal clearance
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <div className="flex justify-between text-[10px] text-slate-400 font-mono mb-1">
-                    <span>Rapid (&lt; 30m)</span>
-                    <span>Stable (120m+)</span>
-                  </div>
-                  <div className="w-full bg-white/[0.05] h-1.5 rounded-full overflow-hidden border border-white/[0.08]">
-                    <div 
-                      className="bg-emerald-400 h-full" 
-                      style={{ width: `${Math.min(100, Math.max(0, (result.multi_objective_profile.metabolic_stability_half_life_min / 120) * 100))}%` }} 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* QED Drug-likeness */}
-              <div className="bg-black/40 p-5 rounded-2xl border border-white/[0.06] flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                    <span>QED Drug-Likeness</span>
-                    <ScientificTooltip id="qed" />
-                  </div>
-                  <div className="text-2xl font-light font-mono text-emerald-400 mt-1">
-                    {result.multi_objective_profile.qed_drug_likeness}
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                    Desirability composite
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <div className="flex justify-between text-[10px] text-slate-400 font-mono mb-1">
-                    <span>Poor (&lt; 0.4)</span>
-                    <span>Ideal (0.7+)</span>
-                  </div>
-                  <div className="w-full bg-white/[0.05] h-1.5 rounded-full overflow-hidden border border-white/[0.08]">
-                    <div 
-                      className="bg-emerald-400 h-full" 
-                      style={{ width: `${Math.round(result.multi_objective_profile.qed_drug_likeness * 100)}%` }} 
-                    />
-                  </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
+
+            {/* Stage 3: independent cross-check against the graph neural network */}
+            {result.dmpnn && result.dmpnn.solubility_logs && (
+              <div className="mt-6 pt-5 border-t border-white/[0.06]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Network className="w-4 h-4 text-cyan-400" />
+                  <h4 className="text-sm font-medium text-white">
+                    Independent cross-check: D-MPNN graph neural network
+                  </h4>
+                </div>
+                <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">
+                  A second model of a different family on a different molecular representation
+                  (a directed message-passing network over the molecular graph, versus bagged
+                  trees over fingerprint bits). Agreement is weak evidence that a prediction is
+                  representation-independent — not proof that it is correct.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-black/40 p-4 rounded-2xl border border-white/[0.06]">
+                    <div className="text-[11px] text-slate-400 font-mono">D-MPNN logS</div>
+                    <div className="text-xl font-light font-mono text-cyan-300 mt-1">
+                      {result.dmpnn.solubility_logs.value}
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono mt-1">
+                      σ = {result.dmpnn.solubility_logs.sigma} ({result.dmpnn.n_members}-member ensemble)
+                    </div>
+                  </div>
+
+                  <div className="bg-black/40 p-4 rounded-2xl border border-white/[0.06]">
+                    <div className="text-[11px] text-slate-400 font-mono">Baseline logS</div>
+                    <div className="text-xl font-light font-mono text-white mt-1">
+                      {result.dmpnn.agreement_with_baseline.baseline_value}
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono mt-1">
+                      ExtraTrees on fingerprints
+                    </div>
+                  </div>
+
+                  <div
+                    className={`p-4 rounded-2xl border ${
+                      result.dmpnn.agreement_with_baseline.exceeds_dmpnn_sigma
+                        ? 'bg-amber-500/5 border-amber-500/20'
+                        : 'bg-emerald-500/5 border-emerald-500/20'
+                    }`}
+                  >
+                    <div className="text-[11px] text-slate-400 font-mono">Difference</div>
+                    <div
+                      className={`text-xl font-light font-mono mt-1 ${
+                        result.dmpnn.agreement_with_baseline.exceeds_dmpnn_sigma
+                          ? 'text-amber-300'
+                          : 'text-emerald-300'
+                      }`}
+                    >
+                      {result.dmpnn.agreement_with_baseline.absolute_difference}
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono mt-1">
+                      {result.dmpnn.agreement_with_baseline.exceeds_dmpnn_sigma
+                        ? 'Exceeds σ — representation-sensitive'
+                        : 'Within σ — models agree'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Variance decomposition: the ensemble separates the two sources */}
+                <div className="mt-3 grid grid-cols-2 gap-3 text-[11px]">
+                  <div className="bg-black/20 px-4 py-3 rounded-xl border border-white/[0.06]">
+                    <span className="text-slate-400 font-mono">Aleatoric variance</span>
+                    <div className="text-slate-200 font-mono mt-0.5">
+                      {result.dmpnn.solubility_logs.aleatoric_variance}
+                      <span className="text-slate-500"> — irreducible data noise</span>
+                    </div>
+                  </div>
+                  <div className="bg-black/20 px-4 py-3 rounded-xl border border-white/[0.06]">
+                    <span className="text-slate-400 font-mono">Epistemic variance</span>
+                    <div className="text-slate-200 font-mono mt-0.5">
+                      {result.dmpnn.solubility_logs.epistemic_variance}
+                      <span className="text-slate-500"> — member disagreement</span>
+                    </div>
+                  </div>
+                </div>
+
+                {result.dmpnn.toxicity?.conformal_sets && (
+                  <div className="mt-3 bg-black/20 px-4 py-3 rounded-xl border border-white/[0.06] text-[11px]">
+                    <span className="text-slate-400 font-mono">
+                      Conformal prediction set for toxicity (90%)
+                    </span>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {(['lac', 'aps_randomized'] as const).map((method) => {
+                        const set = result.dmpnn.toxicity.conformal_sets[method];
+                        if (!set) return null;
+                        return (
+                          <span
+                            key={method}
+                            className="px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-200 font-mono"
+                            title={set.method}
+                          >
+                            {method === 'lac' ? 'LAC' : 'APS'}:{' '}
+                            {set.labels.length ? set.labels.join(' | ') : '(empty set)'}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
+                      A set, not a single label. An empty set means no label was plausible at
+                      this confidence; both labels means the model cannot discriminate.
+                      Coverage is marginal across the test distribution, not a per-molecule
+                      probability.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {onSendToPareto && (
               <div className="mt-6 pt-5 border-t border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">

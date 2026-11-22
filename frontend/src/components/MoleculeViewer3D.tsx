@@ -1,10 +1,29 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { RotateCw, RefreshCw, Sparkles } from 'lucide-react';
+import { RotateCw, RefreshCw, Sparkles, AlertTriangle } from 'lucide-react';
 
 interface MoleculeViewer3DProps {
   sdfData?: string | null;
   moleculeName?: string;
+  /** Backend-reported reason the conformer could not be generated, if any. */
+  sdfError?: string | null;
 }
+
+// Wait for the 3Dmol bundle to appear on window. It is a classic <script> tag,
+// so it may not have executed by the time this component first renders.
+const waitFor3Dmol = (timeoutMs = 8000): Promise<boolean> =>
+  new Promise((resolve) => {
+    if (window.$3Dmol) return resolve(true);
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      if (window.$3Dmol) {
+        window.clearInterval(timer);
+        resolve(true);
+      } else if (Date.now() - started > timeoutMs) {
+        window.clearInterval(timer);
+        resolve(false);
+      }
+    }, 100);
+  });
 
 declare global {
   interface Window {
@@ -12,52 +31,78 @@ declare global {
   }
 }
 
-export const MoleculeViewer3D: React.FC<MoleculeViewer3DProps> = ({ sdfData, moleculeName }) => {
+export const MoleculeViewer3D: React.FC<MoleculeViewer3DProps> = ({ sdfData, moleculeName, sdfError }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<any>(null);
   const [styleMode, setStyleMode] = useState<'stick' | 'sphere' | 'ballStick'>('ballStick');
   const [isRotating, setIsRotating] = useState<boolean>(true);
   const [hasSurface, setHasSurface] = useState<boolean>(false);
   const [surfaceObj, setSurfaceObj] = useState<any>(null);
+  // The viewer previously failed to a blank box whenever the 3Dmol bundle was
+  // unavailable; these states make every failure mode visible and recoverable.
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState<number>(0);
 
   useEffect(() => {
-    if (!containerRef.current || !sdfData) return;
-
-    // Check if $3Dmol is loaded
-    if (!window.$3Dmol) {
-      console.warn("3Dmol.js not yet loaded on window");
+    if (!sdfData) {
+      setStatus('idle');
       return;
     }
 
-    try {
-      // Clear container
-      containerRef.current.innerHTML = '';
-      
-      const viewer = window.$3Dmol.createViewer(containerRef.current, {
-        backgroundColor: '#030712'
-      });
-      viewerRef.current = viewer;
+    let cancelled = false;
+    setStatus('loading');
+    setErrorMessage(null);
 
-      viewer.addModel(sdfData, 'sdf');
-      applyStyle(viewer, styleMode);
-      viewer.zoomTo();
-      viewer.render();
+    waitFor3Dmol().then((available) => {
+      if (cancelled) return;
 
-      if (isRotating) {
-        viewer.spin('y', 1.0);
+      if (!available) {
+        setStatus('error');
+        setErrorMessage(
+          'The 3Dmol.js viewer library did not load. It is served locally from ' +
+          '/3Dmol-min.js, so this usually means the asset is missing from the build ' +
+          'output or was blocked by the browser.'
+        );
+        return;
       }
-    } catch (err) {
-      console.error("Failed to render 3D molecule with 3Dmol.js:", err);
-    }
+      if (!containerRef.current) return;
+
+      try {
+        containerRef.current.innerHTML = '';
+        const viewer = window.$3Dmol.createViewer(containerRef.current, {
+          backgroundColor: '#030712'
+        });
+        viewerRef.current = viewer;
+
+        viewer.addModel(sdfData, 'sdf');
+        applyStyle(viewer, styleMode);
+        viewer.zoomTo();
+        viewer.render();
+        if (isRotating) viewer.spin('y', 1.0);
+
+        setStatus('ready');
+      } catch (err) {
+        setStatus('error');
+        setErrorMessage(
+          err instanceof Error
+            ? `The conformer could not be rendered: ${err.message}`
+            : 'The conformer could not be rendered.'
+        );
+      }
+    });
 
     return () => {
+      cancelled = true;
       if (viewerRef.current) {
         try {
           viewerRef.current.clear();
-        } catch (e) {}
+        } catch {
+          /* viewer already torn down */
+        }
       }
     };
-  }, [sdfData]);
+  }, [sdfData, reloadToken]);
 
   const applyStyle = (viewer: any, mode: 'stick' | 'sphere' | 'ballStick') => {
     if (!viewer) return;
@@ -124,11 +169,41 @@ export const MoleculeViewer3D: React.FC<MoleculeViewer3DProps> = ({ sdfData, mol
     viewerRef.current.render();
   };
 
+  // Empty state: nothing requested yet, or the backend could not embed a conformer.
   if (!sdfData) {
+    if (sdfError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-72 rounded-xl bg-amber-500/5 border border-amber-500/20 text-amber-200 p-6 text-center gap-2">
+          <AlertTriangle className="w-7 h-7 text-amber-400" />
+          <p className="text-sm font-medium">No 3D conformer could be generated</p>
+          <p className="text-xs text-amber-200/70 max-w-sm">{sdfError}</p>
+          <p className="text-[11px] text-slate-400 mt-1">
+            The 2D structure and all predicted properties are unaffected.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center h-72 rounded-xl bg-slate-900/60 border border-slate-800 text-slate-400 p-6 text-center">
         <RotateCw className="w-8 h-8 text-slate-600 mb-2 animate-spin-slow" />
         <p className="text-sm">Enter a valid SMILES to generate 3D conformer coordinates.</p>
+      </div>
+    );
+  }
+
+  // Error state: the viewer library or the render itself failed.
+  if (status === 'error') {
+    return (
+      <div className="flex flex-col items-center justify-center h-72 rounded-xl bg-rose-500/5 border border-rose-500/20 text-rose-200 p-6 text-center gap-3">
+        <AlertTriangle className="w-7 h-7 text-rose-400" />
+        <p className="text-sm font-medium">3D viewer unavailable</p>
+        <p className="text-xs text-rose-200/70 max-w-sm">{errorMessage}</p>
+        <button
+          onClick={() => setReloadToken((t) => t + 1)}
+          className="mt-1 px-4 py-1.5 text-xs font-medium rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-colors cursor-pointer"
+        >
+          Retry
+        </button>
       </div>
     );
   }

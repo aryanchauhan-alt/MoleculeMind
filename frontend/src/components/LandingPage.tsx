@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Atom, 
   FlaskConical, 
@@ -82,6 +82,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 }) => {
   const [selectedDemo, setSelectedDemo] = useState(PRESET_SHOWCASE[0]);
 
+  // Benchmark figures are fetched from /api/benchmark rather than written into
+  // the page. Hardcoding them (previously R2 = 0.894, RMSE = 0.704, MAE = 0.482)
+  // meant any retraining silently desynchronised the claim from the model.
+  const [metrics, setMetrics] = useState<any | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/benchmark')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (!cancelled && j) setMetrics(j.metrics); })
+      .catch(() => { /* landing page renders without metrics when offline */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const fmt = (v: any, digits = 3) =>
+    typeof v === 'number' ? v.toFixed(digits) : '—';
+  const coverage90 = metrics?.conformal_test_coverage?.['90%']?.empirical_coverage;
+
   const handleLaunchWithConfetti = (tab?: 'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark') => {
     confetti({
       particleCount: 50,
@@ -110,7 +127,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       subtitle: 'Delaney ESOL Trained Architecture',
       badge: 'ExtraTrees Regressor',
       description: 'Genuine multi-feature regression model trained on 1,128 authentic Delaney ESOL measured compounds.',
-      details: 'Evaluated on held-out test data: R² = 0.894, RMSE = 0.704 log(mol/L), MAE = 0.482. Backed by 1,024-bit Morgan Fingerprints.',
+      details: metrics
+        ? `Evaluated on a held-out test split of ${metrics.test_samples} compounds: R² = ${fmt(metrics.r2_score)}, RMSE = ${fmt(metrics.rmse)} log(mol/L), MAE = ${fmt(metrics.mae)}. Backed by 1,024-bit Morgan Fingerprints.`
+        : 'Evaluated on a held-out test split; live metrics load from the backend.',
       icon: Activity
     },
     {
@@ -292,12 +311,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               className="grid grid-cols-3 gap-6 pt-6 border-t border-white/[0.08] max-w-lg"
             >
               <div>
-                <div className="text-2xl sm:text-3xl font-light text-white font-mono">0.894</div>
+                <div className="text-2xl sm:text-3xl font-light text-white font-mono">{fmt(metrics?.r2_score)}</div>
                 <div className="text-[11px] text-slate-400 font-mono tracking-wider uppercase mt-1">Test R² Score</div>
               </div>
               <div>
-                <div className="text-2xl sm:text-3xl font-light text-emerald-400 font-mono">95.0%</div>
-                <div className="text-[11px] text-slate-400 font-mono tracking-wider uppercase mt-1">Conformal Coverage</div>
+                <div className="text-2xl sm:text-3xl font-light text-emerald-400 font-mono">
+                  {typeof coverage90 === 'number' ? `${coverage90.toFixed(1)}%` : '—'}
+                </div>
+                <div className="text-[11px] text-slate-400 font-mono tracking-wider uppercase mt-1">Coverage at 90% Nominal</div>
               </div>
               <div>
                 <div className="text-2xl sm:text-3xl font-light text-cyan-400 font-mono">1,128</div>
@@ -684,13 +705,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.08] space-y-2">
-              <div className="text-3xl sm:text-4xl font-light text-white font-mono">0.894</div>
+              <div className="text-3xl sm:text-4xl font-light text-white font-mono">{fmt(metrics?.r2_score)}</div>
               <div className="text-xs font-semibold text-slate-300">Test Set R² Metric</div>
               <div className="text-[11px] text-slate-400">ExtraTrees regression coefficient of determination</div>
             </div>
 
             <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.08] space-y-2">
-              <div className="text-3xl sm:text-4xl font-light text-emerald-400 font-mono">0.704</div>
+              <div className="text-3xl sm:text-4xl font-light text-emerald-400 font-mono">{fmt(metrics?.rmse)}</div>
               <div className="text-xs font-semibold text-slate-300">Root Mean Square Error</div>
               <div className="text-[11px] text-slate-400">log(mol/L) units across held-out test split</div>
             </div>

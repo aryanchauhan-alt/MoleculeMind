@@ -39,12 +39,32 @@ class ParetoLaboratory:
         n = len(candidates)
         if n == 0:
             return []
+        if len(objectives) != len(maximize):
+            raise ValueError(
+                f"objectives ({len(objectives)}) and maximize ({len(maximize)}) "
+                "must have the same length."
+            )
 
-        # Extract objective matrix
+        # Extract objective matrix.
+        #
+        # Missing values are a hard error, never a silent default. Substituting
+        # 0.0 (the previous behaviour) is actively dangerous: for a *minimised*
+        # objective such as toxicity probability, 0.0 is the best possible value,
+        # so a candidate missing that property would be promoted to the Pareto
+        # front on the strength of a value it does not have.
         obj_matrix = np.zeros((n, len(objectives)), dtype=np.float64)
         for i, c in enumerate(candidates):
             for j, obj_name in enumerate(objectives):
-                obj_matrix[i, j] = float(c.get(obj_name, 0.0))
+                value = c.get(obj_name, None)
+                if value is None or (
+                    isinstance(value, float) and not np.isfinite(value)
+                ):
+                    raise ValueError(
+                        f"Candidate '{c.get('id', i)}' has no usable value for "
+                        f"objective '{obj_name}'. Exclude the candidate or drop the "
+                        "objective; missing values are not imputed."
+                    )
+                obj_matrix[i, j] = float(value)
 
         maximize_mask = np.array(maximize, dtype=bool)
 

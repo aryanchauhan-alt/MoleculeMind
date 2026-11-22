@@ -1,241 +1,458 @@
 """
-Active Learning & Bayesian Optimization Module using BoTorch.
-Manages candidate pool, acquisition functions (UCB, EI, Uncertainty Sampling, Pareto HV),
-and simulated experiment execution for human-in-the-loop molecular discovery.
+Active Learning / Bayesian Optimisation engine (simulated laboratory mode).
+
+SIMULATED LABORATORY MODE
+-------------------------
+This module runs a *retrospective simulation*, not a real laboratory workflow.
+The "assay" reveals an existing experimental measurement from the Delaney ESOL
+dataset that was withheld from the model. No new experiment is performed.
+
+ORACLE SEPARATION (see PROJECT_AUDIT.md section 10.3)
+-----------------------------------------------------
+The previous implementation returned `true_pic50`, `true_solubility` and
+`true_toxicity` for every candidate - assayed or not - directly over the API,
+so the full answer key was visible in the browser. It also attributed invented
+activity and toxicity numbers to named real drugs.
+
+This implementation enforces four separate stores:
+
+  1. `self._oracle`          - measured values, SERVER-SIDE ONLY, never serialised
+  2. `self._revealed`        - ids whose measurement has been released by an assay
+  3. `self.candidates`       - public records; carry a measurement only once revealed
+  4. the model's test set    - held separately in ModelService, never in this pool
+
+`public_pool()` is the only serialisation path and asserts that no oracle key
+can escape.
+
+GAUSSIAN PROCESS (see PROJECT_AUDIT.md section 10.2)
+----------------------------------------------------
+The previous GP received PCA components computed from the *unscaled* 1032-dim
+feature matrix, where molecular weight carried 91% of the variance and inputs
+spanned [-113, +178]. BoTorch's default lengthscale prior assumes inputs in
+roughly [0,1]^d, so every train/test pair was effectively uncorrelated, the
+posterior collapsed to the prior, and all candidates received an identical
+acquisition score (UCB = 0 + sqrt(2)*1 = 1.414 for all 24).
+
+The fix: standardise features before PCA, map components to the unit cube, and
+apply BoTorch's `Normalize` input transform and `Standardize` outcome transform.
+`test_acquisition_is_discriminative` guards against a regression.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
+import math
 import numpy as np
 import torch
+
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
+from botorch.models.transforms.input import Normalize
+from botorch.models.transforms.outcome import Standardize
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from botorch.acquisition import UpperConfidenceBound, ExpectedImprovement
+from botorch.acquisition import UpperConfidenceBound
+
+try:  # BoTorch >= 0.9 recommends the log-space analytic EI
+    from botorch.acquisition import LogExpectedImprovement as _EIClass
+    _EI_NAME = "LogExpectedImprovement"
+except ImportError:  # pragma: no cover
+    from botorch.acquisition import ExpectedImprovement as _EIClass
+    _EI_NAME = "ExpectedImprovement"
+
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from rdkit import Chem
 
+from backend.app.core.config import settings
 from backend.app.core.mol_analyzer import compute_molecular_descriptors, generate_2d_svg
 from backend.app.core.dataset import DatasetManager
 
 
+STRATEGIES = {
+    "ucb": "Upper Confidence Bound: mu + sqrt(beta) * sigma. Balances exploitation and exploration.",
+    "ei": f"{_EI_NAME}: expected gain over the best measurement observed so far.",
+    "uncertainty": "Pure uncertainty sampling: rank by posterior sigma alone (maximum exploration).",
+    "greedy": "Greedy exploitation: rank by posterior mean alone (no exploration).",
+}
+
+# Keys that must never cross the API boundary.
+_ORACLE_KEYS = {"measured_logs", "true_solubility", "true_pic50", "true_toxicity"}
+
+
 class ActiveLearningEngine:
-    def __init__(self, dataset_manager: DatasetManager):
+    """
+    Human-in-the-loop candidate selection over a pool of real, held-out
+    ESOL compounds whose measured solubility the surrogate has never seen.
+
+    Objective: maximise measured aqueous solubility, logS (a single real,
+    traceable endpoint). Objectives without a validated model are deliberately
+    excluded rather than simulated.
+    """
+
+    N_PCA_COMPONENTS = settings.al_pca_components
+    N_SEED = settings.al_seed_size
+
+    def __init__(
+        self,
+        dataset_manager: DatasetManager,
+        pool_payload: Optional[Dict[str, Any]] = None,
+        model_service: Optional[Any] = None,
+    ):
         self.dm = dataset_manager
-        self.candidate_pool: List[Dict[str, Any]] = []
-        self.feature_matrix: Optional[np.ndarray] = None
-        self.pca_features: Optional[np.ndarray] = None
+        self.pool_payload = pool_payload or {}
+        # Optional back-reference used to refit conformal calibration once new
+        # labels arrive. Without it the campaign still runs, but the intervals
+        # would be based on a calibration set that predates the new labels.
+        self.model_service = model_service
+        self.last_recalibration: Optional[Dict[str, Any]] = None
+
+        self._oracle: Dict[str, float] = {}
+        self._revealed: set = set()
+        self.candidates: List[Dict[str, Any]] = []
+
+        self.features: Optional[np.ndarray] = None  # scaled, unit-cube GP inputs
+        self.scaler: Optional[StandardScaler] = None
+        self.pca: Optional[PCA] = None
+
         self.iteration: int = 0
         self.history: List[Dict[str, Any]] = []
-        self.pca = PCA(n_components=6)
+        self.last_fit_ok: Optional[bool] = None
+        self.last_fit_error: Optional[str] = None
+
         self.initialize_candidate_library()
 
+    # ------------------------------------------------------------- library
+
     def initialize_candidate_library(self):
-        """
-        Populate candidate library with diverse, authentic molecules from the Delaney and ChEMBL benchmark sets.
-        Initializes 30 candidates with 6 initially assayed and 24 unassayed.
-        """
-        # Curated diverse library with known chemical identities & real benchmark properties
-        library_data = [
-            # Initially Assayed Seeds
-            {"id": "MOL-001", "name": "Aspirin", "smiles": "CC(=O)Oc1ccccc1C(=O)O", "true_solubility": -1.61, "true_pic50": 6.2, "true_toxicity": 0.08, "assayed": True},
-            {"id": "MOL-002", "name": "Paracetamol", "smiles": "CC(=O)Nc1ccc(O)cc1", "true_solubility": -1.18, "true_pic50": 5.8, "true_toxicity": 0.12, "assayed": True},
-            {"id": "MOL-003", "name": "Ibuprofen", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "true_solubility": -3.17, "true_pic50": 7.1, "true_toxicity": 0.14, "assayed": True},
-            {"id": "MOL-004", "name": "Caffeine", "smiles": "Cn1cnc2c1c(=O)n(c(=O)n2C)C", "true_solubility": -1.02, "true_pic50": 6.0, "true_toxicity": 0.10, "assayed": True},
-            {"id": "MOL-005", "name": "Benzoic acid", "smiles": "O=C(O)c1ccccc1", "true_solubility": -1.54, "true_pic50": 5.1, "true_toxicity": 0.05, "assayed": True},
-            {"id": "MOL-006", "name": "Salicylic acid", "smiles": "Oc1ccccc1C(=O)O", "true_solubility": -1.78, "true_pic50": 5.9, "true_toxicity": 0.09, "assayed": True},
+        compounds = self.pool_payload.get("compounds", [])
+        if not compounds:
+            self.candidates = []
+            self._oracle = {}
+            self._revealed = set()
+            self.history = []
+            return
 
-            # Unassayed Candidate Discovery Pool
-            {"id": "MOL-007", "name": "Naproxen", "smiles": "COc1ccc2cc(ccc2c1)C(C)C(=O)O", "true_solubility": -3.65, "true_pic50": 7.8, "true_toxicity": 0.15, "assayed": False},
-            {"id": "MOL-008", "name": "Sulfamethoxazole", "smiles": "Cc1cc(NS(=O)(=O)c2ccc(N)cc2)no1", "true_solubility": -2.70, "true_pic50": 7.4, "true_toxicity": 0.18, "assayed": False},
-            {"id": "MOL-009", "name": "Nicotinamide", "smiles": "NC(=O)c1cccnc1", "true_solubility": -0.09, "true_pic50": 5.4, "true_toxicity": 0.04, "assayed": False},
-            {"id": "MOL-010", "name": "Cimetidine", "smiles": "Cc1c(CSCCN=C(NC#N)NC)ncn1", "true_solubility": -1.68, "true_pic50": 7.9, "true_toxicity": 0.11, "assayed": False},
-            {"id": "MOL-011", "name": "Propranolol", "smiles": "CC(C)NCC(O)COc1cccc2ccccc12", "true_solubility": -3.52, "true_pic50": 8.5, "true_toxicity": 0.22, "assayed": False},
-            {"id": "MOL-012", "name": "Diclofenac", "smiles": "O=C(O)Cc1ccccc1Nc2c(Cl)cccc2Cl", "true_solubility": -4.80, "true_pic50": 8.8, "true_toxicity": 0.28, "assayed": False},
-            {"id": "MOL-013", "name": "Metformin", "smiles": "CN(C)C(=N)NC(=N)N", "true_solubility": 0.65, "true_pic50": 5.2, "true_toxicity": 0.06, "assayed": False},
-            {"id": "MOL-014", "name": "Carbamazepine", "smiles": "NC(=O)N1c2ccccc2C=Cc3ccccc13", "true_solubility": -3.20, "true_pic50": 7.6, "true_toxicity": 0.24, "assayed": False},
-            {"id": "MOL-015", "name": "Clotrimazole", "smiles": "Clc1ccccc1C(c2ccccc2)(c3ccccc3)n4ccnc4", "true_solubility": -5.50, "true_pic50": 8.7, "true_toxicity": 0.35, "assayed": False},
-            {"id": "MOL-016", "name": "Warfarin", "smiles": "CC(=O)CC(c1ccccc1)c2c(O)c3ccccc3oc2=O", "true_solubility": -4.20, "true_pic50": 8.2, "true_toxicity": 0.38, "assayed": False},
-            {"id": "MOL-017", "name": "Ketoprofen", "smiles": "CC(C(=O)O)c1cccc(C(=O)c2ccccc2)c1", "true_solubility": -3.40, "true_pic50": 7.7, "true_toxicity": 0.17, "assayed": False},
-            {"id": "MOL-018", "name": "Atorvastatin core", "smiles": "Cc1c(C(=O)Nc2ccccc2)c(c3ccc(F)cc3)n(c1C(C)C)c4ccccc4", "true_solubility": -5.10, "true_pic50": 9.2, "true_toxicity": 0.29, "assayed": False},
-            {"id": "MOL-019", "name": "Erlotinib analog", "smiles": "COc1cc2ncnc(Nc3cccc(C#C)c3)c2cc1OC", "true_solubility": -4.40, "true_pic50": 9.1, "true_toxicity": 0.31, "assayed": False},
-            {"id": "MOL-020", "name": "Dopamine", "smiles": "NCCc1ccc(O)c(O)c1", "true_solubility": -0.80, "true_pic50": 6.8, "true_toxicity": 0.07, "assayed": False},
-            {"id": "MOL-021", "name": "Phenytoin", "smiles": "O=C1NC(=O)C(N1)(c2ccccc2)c3ccccc3", "true_solubility": -3.90, "true_pic50": 7.3, "true_toxicity": 0.26, "assayed": False},
-            {"id": "MOL-022", "name": "Fluorouracil", "smiles": "O=C1NC=C(F)C(=O)N1", "true_solubility": -0.92, "true_pic50": 6.5, "true_toxicity": 0.42, "assayed": False},
-            {"id": "MOL-023", "name": "Benzocaine", "smiles": "CCOC(=O)c1ccc(N)cc1", "true_solubility": -2.15, "true_pic50": 6.3, "true_toxicity": 0.11, "assayed": False},
-            {"id": "MOL-024", "name": "Indomethacin", "smiles": "COc1ccc2n(c(C)c(CC(=O)O)c2c1)C(=O)c3ccc(Cl)cc3", "true_solubility": -4.95, "true_pic50": 8.9, "true_toxicity": 0.32, "assayed": False},
-            {"id": "MOL-025", "name": "Sulfadiazine", "smiles": "Nc1ccc(cc1)S(=O)(=O)Nc2ncccn2", "true_solubility": -2.85, "true_pic50": 7.2, "true_toxicity": 0.16, "assayed": False},
-            {"id": "MOL-026", "name": "Hydrochlorothiazide", "smiles": "NS(=O)(=O)c1cc2c(cc1Cl)NCNS2(=O)=O", "true_solubility": -2.55, "true_pic50": 7.0, "true_toxicity": 0.13, "assayed": False},
-            {"id": "MOL-027", "name": "Lidocaine", "smiles": "CCN(CC)CC(=O)Nc1c(C)cccc1C", "true_solubility": -1.95, "true_pic50": 7.5, "true_toxicity": 0.15, "assayed": False},
-            {"id": "MOL-028", "name": "Ranitidine analog", "smiles": "CNC(=C[N+](=O)[O-])NCCSCC1=CC=C(O1)CN(C)C", "true_solubility": -1.30, "true_pic50": 7.1, "true_toxicity": 0.10, "assayed": False},
-            {"id": "MOL-029", "name": "Theophylline", "smiles": "Cn1c(=O)c2[nH]cnc2n(C)c1=O", "true_solubility": -1.45, "true_pic50": 6.4, "true_toxicity": 0.12, "assayed": False},
-            {"id": "MOL-030", "name": "Furosemide", "smiles": "NS(=O)(=O)c1cc(c(Cl)cc1C(=O)O)NCc2ccco2", "true_solubility": -3.60, "true_pic50": 7.9, "true_toxicity": 0.19, "assayed": False}
-        ]
+        self._oracle = {}
+        self._revealed = set()
+        self.candidates = []
+        raw_features: List[np.ndarray] = []
 
-        self.candidate_pool = []
-        raw_features = []
-
-        for item in library_data:
+        for item in compounds:
             mol = Chem.MolFromSmiles(item["smiles"])
-            if mol is not None:
-                desc = compute_molecular_descriptors(mol)
-                feat = self.dm.extract_features_from_mol(mol)
-                raw_features.append(feat)
-                svg = generate_2d_svg(mol, width=280, height=200)
+            if mol is None:
+                continue
+            desc = compute_molecular_descriptors(mol)
+            raw_features.append(self.dm.extract_features_from_mol(mol))
 
-                cand = {
+            # Measured value goes to the private oracle store only.
+            self._oracle[item["id"]] = float(item["measured_logs"])
+
+            self.candidates.append(
+                {
                     "id": item["id"],
-                    "name": item["name"],
+                    "name": item.get("name", item["id"]),
                     "smiles": item["smiles"],
-                    "true_solubility": item["true_solubility"],
-                    "true_pic50": item["true_pic50"],
-                    "true_toxicity": item["true_toxicity"],
-                    "assayed": item["assayed"],
-                    "svg_2d": svg,
+                    "svg_2d": generate_2d_svg(mol, width=280, height=200),
                     "mw": desc["molecular_weight"],
                     "logp": desc["logp"],
                     "tpsa": desc["tpsa"],
                     "qed": desc["qed"],
-                    "predicted_utility": None,
+                    "assayed": False,
+                    "measured_value": None,
+                    "assay_round": None,
+                    "predicted_value": None,
                     "uncertainty_sigma": None,
                     "acquisition_score": None,
-                    "assay_round": 0 if item["assayed"] else None
                 }
-                self.candidate_pool.append(cand)
+            )
 
-        self.feature_matrix = np.array(raw_features, dtype=np.float32)
-        # Compute normalized PCA features for Gaussian Process conditioning
-        self.pca_features = self.pca.fit_transform(self.feature_matrix)
+        # ---- Feature pipeline: standardise -> PCA -> unit cube -------------
+        X = np.array(raw_features, dtype=np.float64)
+        self.scaler = StandardScaler()
+        Xs = self.scaler.fit_transform(X)
+        n_comp = min(self.N_PCA_COMPONENTS, Xs.shape[0] - 1, Xs.shape[1])
+        self.pca = PCA(n_components=n_comp, random_state=0)
+        Z = self.pca.fit_transform(Xs)
+        lo, hi = Z.min(axis=0), Z.max(axis=0)
+        self.features = (Z - lo) / np.maximum(hi - lo, 1e-9)
+
+        # ---- Seed set: a diverse starting batch, revealed up front ---------
+        for cand in self.candidates[: self.N_SEED]:
+            self._reveal(cand, round_number=0)
+
         self.iteration = 0
-        self.history = [{
-            "round": 0,
-            "assayed_count": sum(1 for c in self.candidate_pool if c["assayed"]),
-            "max_pic50": max(c["true_pic50"] for c in self.candidate_pool if c["assayed"]),
-            "best_compound": max((c for c in self.candidate_pool if c["assayed"]), key=lambda x: x["true_pic50"])["name"]
-        }]
+        self.history = [self._history_entry(round_number=0, newly_assayed=[])]
 
-    def rank_candidates(self, strategy: str = "ucb", beta: float = 2.0) -> List[Dict[str, Any]]:
+    def _reveal(self, cand: Dict[str, Any], round_number: int):
+        """Release a measurement from the oracle into the public record."""
+        cand["assayed"] = True
+        cand["assay_round"] = round_number
+        cand["measured_value"] = round(self._oracle[cand["id"]], 3)
+        self._revealed.add(cand["id"])
+
+    def _history_entry(
+        self, round_number: int, newly_assayed: List[str]
+    ) -> Dict[str, Any]:
+        measured = [
+            c["measured_value"] for c in self.candidates if c["assayed"]
+        ]
+        best = max(measured) if measured else None
+        best_cmpd = None
+        if best is not None:
+            best_cmpd = next(
+                c["name"] for c in self.candidates if c["measured_value"] == best
+            )
+        return {
+            "round": round_number,
+            "assayed_count": len(measured),
+            "newly_assayed": newly_assayed,
+            "best_revealed_logs": best,
+            "best_compound": best_cmpd,
+        }
+
+    # ------------------------------------------------------------- ranking
+
+    def rank_candidates(
+        self, strategy: str = "ucb", beta: float = 2.0
+    ) -> List[Dict[str, Any]]:
         """
-        Fit BoTorch GP on currently assayed molecules and score candidates using the chosen acquisition strategy.
-        Strategies:
-        - 'ucb': Upper Confidence Bound (exploration + exploitation)
-        - 'ei': Expected Improvement
-        - 'uncertainty': Pure epistemic uncertainty sampling (maximize sigma)
-        - 'pareto_hv': Multi-objective composite hypervolume improvement
+        Fit a GP on revealed measurements and score the unlabelled pool.
+
+        Returns the public pool. Candidates already labelled receive no
+        acquisition score and are excluded from selection.
         """
-        assayed_indices = [i for i, c in enumerate(self.candidate_pool) if c["assayed"]]
-        unassayed_indices = [i for i, c in enumerate(self.candidate_pool) if not c["assayed"]]
+        if strategy not in STRATEGIES:
+            strategy = "ucb"
 
-        if len(assayed_indices) < 2 or not unassayed_indices:
-            return self.candidate_pool
+        labelled = [i for i, c in enumerate(self.candidates) if c["assayed"]]
+        unlabelled = [i for i, c in enumerate(self.candidates) if not c["assayed"]]
 
-        # Composite multi-objective target for Bayesian Optimization:
-        # Utility U = pIC50 (activity) + 0.5 * Solubility(norm) - 1.5 * Toxicity(risk) + 1.0 * QED
-        targets = []
-        for idx in assayed_indices:
-            c = self.candidate_pool[idx]
-            # Solubility normalization (-6 to 0 -> 0 to 1)
-            sol_norm = np.clip((c["true_solubility"] + 6.0) / 6.0, 0.0, 1.0)
-            u = c["true_pic50"] + 0.8 * sol_norm - 2.0 * c["true_toxicity"] + 1.2 * c["qed"]
-            targets.append(u)
+        if len(labelled) < 2 or not unlabelled or self.features is None:
+            return self.public_pool()
 
-        X_train = torch.tensor(self.pca_features[assayed_indices], dtype=torch.float64)
-        y_train = torch.tensor(targets, dtype=torch.float64).unsqueeze(-1)
-        
-        # Standardize targets
-        y_mean = y_train.mean()
-        y_std = max(y_train.std(), 1e-4)
-        y_train_norm = (y_train - y_mean) / y_std
+        X_train = torch.tensor(self.features[labelled], dtype=torch.float64)
+        y_train = torch.tensor(
+            [[self.candidates[i]["measured_value"]] for i in labelled],
+            dtype=torch.float64,
+        )
 
-        # BoTorch Gaussian Process fit
-        gp = SingleTaskGP(X_train, y_train_norm)
+        d = X_train.shape[-1]
+        gp = SingleTaskGP(
+            X_train,
+            y_train,
+            input_transform=Normalize(d=d),
+            outcome_transform=Standardize(m=1),
+        )
         mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
         try:
             fit_gpytorch_mll(mll)
-        except Exception:
-            pass
+            self.last_fit_ok, self.last_fit_error = True, None
+        except Exception as e:
+            # Surfaced rather than swallowed: the previous `except: pass` hid
+            # every optimiser failure behind a silently degenerate posterior.
+            self.last_fit_ok, self.last_fit_error = False, str(e)
+            print(f"[active_learning] GP fit failed, using prior hyperparameters: {e}")
 
-        # Prepare unassayed candidates for acquisition evaluation
-        X_cand = torch.tensor(self.pca_features[unassayed_indices], dtype=torch.float64).unsqueeze(1)
-        
-        # Acquisition evaluation
+        X_cand = torch.tensor(self.features[unlabelled], dtype=torch.float64)
+
         with torch.no_grad():
-            posterior = gp.posterior(X_cand.squeeze(1))
-            mean_norm = posterior.mean.squeeze(-1)
-            var_norm = posterior.variance.squeeze(-1)
-            sigma_norm = torch.sqrt(torch.clamp(var_norm, min=1e-6))
+            posterior = gp.posterior(X_cand)
+            mean = posterior.mean.squeeze(-1).numpy()
+            sigma = np.sqrt(
+                np.clip(posterior.variance.squeeze(-1).numpy(), 1e-12, None)
+            )
 
-            # Unstandardize mean and sigma to real utility scale
-            pred_utility = (mean_norm * y_std + y_mean).numpy()
-            pred_sigma = (sigma_norm * y_std).numpy()
+            best_f = float(y_train.max().item())
+            q_cand = X_cand.unsqueeze(1)  # q-batch shape (n, 1, d)
 
             if strategy == "ucb":
-                ucb_acq = UpperConfidenceBound(gp, beta=beta)
-                acq_vals = ucb_acq(X_cand).numpy()
+                acq = UpperConfidenceBound(gp, beta=beta)(q_cand).numpy()
             elif strategy == "ei":
-                best_f = y_train_norm.max().item()
-                ei_acq = ExpectedImprovement(gp, best_f=best_f)
-                acq_vals = ei_acq(X_cand).numpy()
+                acq = _EIClass(gp, best_f=best_f)(q_cand).numpy()
             elif strategy == "uncertainty":
-                acq_vals = pred_sigma
-            elif strategy == "pareto_hv":
-                # Multi-objective Hypervolume heuristic: balance utility, low uncertainty risk, and novelty
-                acq_vals = pred_utility + 1.2 * pred_sigma
-            else:
-                acq_vals = pred_utility + beta * pred_sigma
+                acq = sigma
+            else:  # greedy
+                acq = mean
 
-        # Update candidate pool records
-        for i, pool_idx in enumerate(unassayed_indices):
-            self.candidate_pool[pool_idx]["predicted_utility"] = round(float(pred_utility[i]), 2)
-            self.candidate_pool[pool_idx]["uncertainty_sigma"] = round(float(pred_sigma[i]), 2)
-            self.candidate_pool[pool_idx]["acquisition_score"] = round(float(acq_vals[i]), 3)
+        for k, idx in enumerate(unlabelled):
+            c = self.candidates[idx]
+            c["predicted_value"] = round(float(mean[k]), 3)
+            c["uncertainty_sigma"] = round(float(sigma[k]), 3)
+            c["acquisition_score"] = round(float(acq[k]), 4)
 
-        # For assayed molecules
-        for pool_idx in assayed_indices:
-            c = self.candidate_pool[pool_idx]
-            sol_norm = np.clip((c["true_solubility"] + 6.0) / 6.0, 0.0, 1.0)
-            u = c["true_pic50"] + 0.8 * sol_norm - 2.0 * c["true_toxicity"] + 1.2 * c["qed"]
-            c["predicted_utility"] = round(float(u), 2)
-            c["uncertainty_sigma"] = 0.05  # Assayed -> low epistemic uncertainty
-            c["acquisition_score"] = 0.0
+        for idx in labelled:
+            c = self.candidates[idx]
+            c["predicted_value"] = None
+            c["uncertainty_sigma"] = None
+            c["acquisition_score"] = None  # already labelled: never reselected
 
-        return self.candidate_pool
+        return self.public_pool()
+
+    def acquisition_spread(self) -> Dict[str, Any]:
+        """Diagnostic: how discriminative the current acquisition scores are."""
+        scores = [
+            c["acquisition_score"]
+            for c in self.candidates
+            if not c["assayed"] and c["acquisition_score"] is not None
+        ]
+        if not scores:
+            return {"n": 0, "n_unique": 0, "degenerate": None}
+        return {
+            "n": len(scores),
+            "n_unique": len(set(scores)),
+            "min": min(scores),
+            "max": max(scores),
+            "degenerate": len(set(scores)) <= 1,
+        }
+
+    # --------------------------------------------------------------- assay
 
     def run_assay(self, candidate_ids: List[str]) -> Dict[str, Any]:
         """
-        Simulate running laboratory assays on selected candidate molecules.
-        Reveals real experimental measurements and logs the discovery iteration.
+        SIMULATED ASSAY. Releases the withheld Delaney ESOL measurement for the
+        approved candidates. Candidates already labelled are rejected rather
+        than silently re-measured.
         """
-        assayed_now = []
-        for c in self.candidate_pool:
-            if c["id"] in candidate_ids and not c["assayed"]:
-                c["assayed"] = True
-                c["assay_round"] = self.iteration + 1
-                assayed_now.append(c)
+        requested = set(candidate_ids)
+        known = {c["id"] for c in self.candidates}
 
-        if assayed_now:
-            self.iteration += 1
-            # Re-rank with updated data
-            self.rank_candidates()
+        unknown = sorted(requested - known)
+        already = sorted(
+            c["id"] for c in self.candidates if c["id"] in requested and c["assayed"]
+        )
+        to_assay = [
+            c for c in self.candidates if c["id"] in requested and not c["assayed"]
+        ]
 
-            best_assayed = max((c for c in self.candidate_pool if c["assayed"]), key=lambda x: x["true_pic50"])
-            self.history.append({
-                "round": self.iteration,
-                "assayed_count": sum(1 for c in self.candidate_pool if c["assayed"]),
-                "newly_assayed": [c["name"] for c in assayed_now],
-                "max_pic50": best_assayed["true_pic50"],
-                "best_compound": best_assayed["name"]
-            })
+        if not to_assay:
+            return {
+                "status": "no_op",
+                "iteration": self.iteration,
+                "rejected_unknown": unknown,
+                "rejected_already_assayed": already,
+                "newly_assayed": [],
+                "history": self.history,
+            }
+
+        self.iteration += 1
+        for c in to_assay:
+            self._reveal(c, round_number=self.iteration)
+
+        # The surrogate must be refitted on the enlarged labelled set.
+        self.rank_candidates()
+
+        # Conformal intervals must not silently reuse a stale calibration once
+        # the labelled set has changed.
+        recalibration = self._recalibrate_conformal(to_assay)
+        entry = self._history_entry(
+            round_number=self.iteration, newly_assayed=[c["name"] for c in to_assay]
+        )
+        self.history.append(entry)
 
         return {
+            "status": "ok",
+            "mode": "simulated",
+            "mode_note": (
+                "Simulated assay: reveals a withheld Delaney ESOL measurement. "
+                "No laboratory experiment was performed."
+            ),
             "iteration": self.iteration,
-            "newly_assayed": [c["name"] for c in assayed_now],
-            "total_assayed": sum(1 for c in self.candidate_pool if c["assayed"]),
-            "remaining_candidates": sum(1 for c in self.candidate_pool if not c["assayed"]),
-            "history": self.history
+            "newly_assayed": [
+                {"id": c["id"], "name": c["name"], "measured_value": c["measured_value"]}
+                for c in to_assay
+            ],
+            "rejected_unknown": unknown,
+            "rejected_already_assayed": already,
+            "total_assayed": len(self._revealed),
+            "remaining_candidates": len(self.candidates) - len(self._revealed),
+            "recalibration": recalibration,
+            "history": self.history,
         }
 
-    def reset(self):
-        """Reset discovery campaign to round 0."""
+    def _recalibrate_conformal(
+        self, newly_assayed: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Fold the newly revealed measurements into the conformal calibration set."""
+        if self.model_service is None:
+            return {
+                "status": "skipped",
+                "reason": "No model service attached to this engine.",
+            }
+        if self.iteration % max(1, settings.al_recalibration_interval) != 0:
+            return {
+                "status": "deferred",
+                "reason": (
+                    f"Recalibration runs every {settings.al_recalibration_interval} "
+                    f"round(s); next at round "
+                    f"{self.iteration + settings.al_recalibration_interval - (self.iteration % settings.al_recalibration_interval)}."
+                ),
+            }
+        try:
+            result = self.model_service.recalibrate_conformal(
+                extra_smiles=[c["smiles"] for c in newly_assayed],
+                extra_targets=[self._oracle[c["id"]] for c in newly_assayed],
+                trigger=f"active learning round {self.iteration}",
+            )
+            self.last_recalibration = {"status": "ok", **result}
+        except Exception as e:
+            # Reported, never swallowed: stale calibration is a correctness
+            # issue the user needs to know about.
+            print(f"[active_learning] conformal recalibration failed: {e}")
+            self.last_recalibration = {"status": "failed", "error": str(e)}
+        return self.last_recalibration
+
+    def reset(self) -> Dict[str, Any]:
         self.initialize_candidate_library()
         self.rank_candidates()
-        return {"status": "reset", "iteration": 0}
+        return {"status": "reset", "iteration": 0, "history": self.history}
+
+    # ---------------------------------------------------------- public view
+
+    def public_pool(self) -> List[Dict[str, Any]]:
+        """
+        The ONLY serialisation path for candidates.
+
+        Strips every oracle key and emits `measured_value` solely for candidates
+        whose assay has actually been executed.
+        """
+        out: List[Dict[str, Any]] = []
+        for c in self.candidates:
+            record = {k: v for k, v in c.items() if k not in _ORACLE_KEYS}
+            if not c["assayed"]:
+                record["measured_value"] = None
+                record["assay_round"] = None
+            out.append(record)
+
+        # Defensive assertion: an oracle key must never reach a client.
+        for record in out:
+            leaked = _ORACLE_KEYS & set(record.keys())
+            if leaked:  # pragma: no cover - guard
+                raise RuntimeError(f"Oracle leak prevented: {leaked}")
+        return out
+
+    def campaign_state(self, strategy: str, beta: float) -> Dict[str, Any]:
+        return {
+            "mode": "simulated",
+            "mode_note": (
+                "Simulated laboratory mode. Assays reveal withheld Delaney ESOL "
+                "measurements; no new experiment is performed."
+            ),
+            "objective": {
+                # Deliberately not named after an oracle field: `_ORACLE_KEYS`
+                # is scanned for as a substring across serialised payloads.
+                "key": "solubility_logs",
+                "label": self.pool_payload.get(
+                    "target_name", "Measured aqueous solubility, logS"
+                ),
+                "maximize": True,
+                "source": self.pool_payload.get("source", "unknown"),
+            },
+            "iteration": self.iteration,
+            "strategy": strategy,
+            "strategy_description": STRATEGIES.get(strategy, ""),
+            "beta": beta,
+            "available_strategies": STRATEGIES,
+            "gp_fit_ok": self.last_fit_ok,
+            "last_recalibration": self.last_recalibration,
+            "gp_fit_error": self.last_fit_error,
+            "acquisition_diagnostics": self.acquisition_spread(),
+            "history": self.history,
+        }

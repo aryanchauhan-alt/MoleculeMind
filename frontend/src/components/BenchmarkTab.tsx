@@ -35,6 +35,9 @@ export const BenchmarkTab: React.FC = () => {
   }
 
   const { metrics, parity_plot_data } = benchmarkData;
+  const scaffold = benchmarkData.scaffold_split_metrics;
+  const clintox = benchmarkData.clintox_metrics;
+  const dmpnn = benchmarkData.dmpnn;
 
   const actuals = parity_plot_data.map((d: any) => d.actual);
   const predicteds = parity_plot_data.map((d: any) => d.predicted);
@@ -357,6 +360,227 @@ export const BenchmarkTab: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Stage 3: model comparison and secondary task metrics, all computed at
+          startup from held-out splits. Nothing here is hardcoded. */}
+      <div className="bg-[#0c0d14]/70 border border-white/[0.08] rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-2xl">
+        <h3 className="font-medium text-white text-base mb-1">Model comparison</h3>
+        <p className="text-xs text-slate-400 mb-5">
+          Independent models on different molecular representations, scored on the same
+          held-out compounds. Every figure is computed at startup from a held-out split.
+        </p>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-slate-400 font-mono uppercase tracking-wider text-[11px] border-b border-white/[0.06]">
+              <tr>
+                <th className="py-2.5 px-3 text-left">Model</th>
+                <th className="py-2.5 px-3 text-left">Representation</th>
+                <th className="py-2.5 px-3 text-left">Split</th>
+                <th className="py-2.5 px-3 text-right">R²</th>
+                <th className="py-2.5 px-3 text-right">RMSE</th>
+                <th className="py-2.5 px-3 text-right">Test n</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.04]">
+              <tr>
+                <td className="py-2.5 px-3 text-white">ExtraTrees (baseline)</td>
+                <td className="py-2.5 px-3 text-slate-400">ECFP4 + descriptors</td>
+                <td className="py-2.5 px-3 text-slate-400">random</td>
+                <td className="py-2.5 px-3 text-right font-mono text-white">{metrics.r2_score}</td>
+                <td className="py-2.5 px-3 text-right font-mono text-slate-300">{metrics.rmse}</td>
+                <td className="py-2.5 px-3 text-right font-mono text-slate-400">{metrics.test_samples}</td>
+              </tr>
+              {scaffold && scaffold.r2_score !== undefined && (
+                <tr>
+                  <td className="py-2.5 px-3 text-white">ExtraTrees</td>
+                  <td className="py-2.5 px-3 text-slate-400">ECFP4 + descriptors</td>
+                  <td className="py-2.5 px-3 text-amber-300/80">Bemis-Murcko scaffold</td>
+                  <td className="py-2.5 px-3 text-right font-mono text-white">{scaffold.r2_score}</td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-300">{scaffold.rmse}</td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-400">{scaffold.test_samples}</td>
+                </tr>
+              )}
+              {dmpnn?.status === 'trained' && dmpnn.metrics?.solubility && (
+                <tr>
+                  <td className="py-2.5 px-3 text-cyan-300">D-MPNN ensemble</td>
+                  <td className="py-2.5 px-3 text-slate-400">molecular graph (learned)</td>
+                  <td className="py-2.5 px-3 text-slate-400">random, pinned to baseline</td>
+                  <td className="py-2.5 px-3 text-right font-mono text-cyan-300">
+                    {dmpnn.metrics.solubility.r2_score}
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-300">
+                    {dmpnn.metrics.solubility.rmse}
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-400">
+                    {dmpnn.metrics.solubility.n_test}
+                  </td>
+                </tr>
+              )}
+              {dmpnn?.independent_validation?.status === 'ok' && (
+                <tr>
+                  <td className="py-2.5 px-3 text-white">Random Forest (independent)</td>
+                  <td className="py-2.5 px-3 text-slate-400">ECFP4 + descriptors</td>
+                  <td className="py-2.5 px-3 text-slate-400">same held-out compounds</td>
+                  <td className="py-2.5 px-3 text-right font-mono text-white">
+                    {dmpnn.independent_validation.independent.r2_score}
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-300">
+                    {dmpnn.independent_validation.independent.rmse}
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-400">
+                    {dmpnn.independent_validation.n_test}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {dmpnn?.status !== 'trained' && (
+          <div className="mt-4 p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20 text-[11px] text-amber-200/80">
+            <strong className="text-amber-200">D-MPNN unavailable.</strong>{' '}
+            {dmpnn?.reason || 'The graph neural network was not trained in this process.'}
+          </div>
+        )}
+
+        {dmpnn?.status === 'trained' && dmpnn.metrics?.solubility && (
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+            <div className="bg-black/30 p-4 rounded-2xl border border-white/[0.06]">
+              <div className="text-slate-400 font-mono">Uncertainty decomposition</div>
+              <div className="text-slate-200 font-mono mt-1.5">
+                aleatoric {dmpnn.metrics.solubility.mean_aleatoric_variance}
+              </div>
+              <div className="text-slate-200 font-mono">
+                epistemic {dmpnn.metrics.solubility.mean_epistemic_variance}
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1.5">
+                Var_total = mean(σ²ₘ) + var(μₘ) across {dmpnn.architecture.n_members} members.
+              </p>
+            </div>
+            <div className="bg-black/30 p-4 rounded-2xl border border-white/[0.06]">
+              <div className="text-slate-400 font-mono">σ tracks error</div>
+              <div className="text-lg font-mono text-white mt-1">
+                r = {dmpnn.metrics.solubility.error_sigma_correlation}
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1.5">
+                Correlation between predicted σ and absolute test error. Positive means the
+                model knows where it is weak.
+              </p>
+            </div>
+            <div className="bg-black/30 p-4 rounded-2xl border border-white/[0.06]">
+              <div className="text-slate-400 font-mono">Model agreement</div>
+              {dmpnn.independent_validation?.status === 'ok' ? (
+                <>
+                  <div className="text-lg font-mono text-white mt-1">
+                    r = {dmpnn.independent_validation.prediction_agreement.pearson_r}
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1.5">
+                    {Math.round(
+                      dmpnn.independent_validation.prediction_agreement
+                        .fraction_exceeding_dmpnn_sigma * 100
+                    )}
+                    % of test compounds disagree by more than the D-MPNN&apos;s own σ.
+                  </p>
+                </>
+              ) : (
+                <p className="text-[10px] text-slate-500 mt-1.5">Not available.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Classification task: ClinTox, with conformal prediction sets */}
+        {(clintox?.status === 'available' ||
+          dmpnn?.metrics?.toxicity?.status === 'evaluated') && (
+          <div className="mt-6 pt-5 border-t border-white/[0.06]">
+            <h4 className="text-sm font-medium text-white mb-1">
+              Classification task — ClinTox CT_TOX
+            </h4>
+            <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">
+              CT_TOX marks compounds whose clinical trial was terminated for toxicity in the
+              source records — not a general statement that a molecule is toxic. PR-AUC must be
+              read against the baseline positive rate, not against ROC-AUC.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+              {clintox?.status === 'available' && (
+                <div className="bg-black/30 p-4 rounded-2xl border border-white/[0.06]">
+                  <div className="text-slate-400 font-mono">Random Forest</div>
+                  <div className="text-slate-200 font-mono mt-1.5">
+                    ROC-AUC {clintox.roc_auc} · PR-AUC {clintox.pr_auc}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    baseline positive rate {clintox.baseline_pr_auc} · n = {clintox.test_samples}
+                  </div>
+                </div>
+              )}
+              {dmpnn?.metrics?.toxicity?.status === 'evaluated' && (
+                <div className="bg-black/30 p-4 rounded-2xl border border-white/[0.06]">
+                  <div className="text-cyan-300 font-mono">D-MPNN (multi-task)</div>
+                  <div className="text-slate-200 font-mono mt-1.5">
+                    ROC-AUC {dmpnn.metrics.toxicity.roc_auc} · PR-AUC{' '}
+                    {dmpnn.metrics.toxicity.pr_auc}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    baseline {dmpnn.metrics.toxicity.baseline_pr_auc} · n ={' '}
+                    {dmpnn.metrics.toxicity.n_test} ({dmpnn.metrics.toxicity.n_positive} positive)
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {dmpnn?.metrics?.toxicity?.conformal_sets && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead className="text-slate-400 font-mono uppercase tracking-wider text-[10px] border-b border-white/[0.06]">
+                    <tr>
+                      <th className="py-2 px-3 text-left">Conformal method</th>
+                      <th className="py-2 px-3 text-right">Nominal</th>
+                      <th className="py-2 px-3 text-right">Empirical coverage</th>
+                      <th className="py-2 px-3 text-right">Avg set size</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.04]">
+                    {['lac', 'aps_randomized'].flatMap((method) =>
+                      Object.entries(
+                        dmpnn.metrics.toxicity.conformal_sets[method] || {}
+                      ).map(([level, v]: [string, any]) => (
+                        <tr key={`${method}-${level}`}>
+                          <td className="py-2 px-3 text-slate-200">
+                            {method === 'lac' ? 'LAC' : 'APS (randomised)'}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-slate-400">{level}</td>
+                          <td className="py-2 px-3 text-right font-mono text-white">
+                            {v.empirical_coverage}%
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-slate-300">
+                            {v.avg_set_size}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <a
+            href="/api/benchmark/report?format=json"
+            className="px-4 py-2 text-xs font-medium rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white border border-white/[0.12] transition-colors"
+          >
+            Download full report (JSON)
+          </a>
+          <a
+            href="/api/benchmark/report?format=csv"
+            className="px-4 py-2 text-xs font-medium rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white border border-white/[0.12] transition-colors"
+          >
+            Download parity table (CSV)
+          </a>
         </div>
       </div>
     </motion.div>

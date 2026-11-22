@@ -227,7 +227,11 @@ export const MolecularAnalyzerTab: React.FC<AnalyzerProps> = ({ onSendToPredict 
                 {/* 3D Mol Viewer */}
                 {(viewMode === 'both' || viewMode === '3d') && (
                   <div className={`flex flex-col min-h-[300px] ${viewMode === '3d' ? 'md:col-span-2 min-h-[360px]' : ''}`}>
-                    <MoleculeViewer3D sdfData={result.sdf_3d} moleculeName={result.descriptors.formula} />
+                    <MoleculeViewer3D
+                      sdfData={result.sdf_3d}
+                      sdfError={result.sdf_error}
+                      moleculeName={result.descriptors.formula}
+                    />
                   </div>
                 )}
               </div>
