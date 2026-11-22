@@ -1,233 +1,453 @@
-# MoleculeMind — Classroom Presentation Master Guide & Demo Script
+# MoleculeMind — Presentation and Demo Guide
+
+**A word-for-word script for presenting this project, with the numbers that are
+actually true.**
+
+Every figure here is measured on the current code with seed 42 and reproducible
+via `python -m pytest -q` or `GET /api/benchmark/report`. If you quote a number
+from this file, the live application will agree with you.
+
+> **Read [LEARNING_GUIDE.md](LEARNING_GUIDE.md) first.** This file tells you what
+> to *say*; that one tells you what you actually *know*. You cannot defend this
+> project from this file alone.
 
 ---
 
-## 1. Executive Summary (The 30-Second Elevator Pitch)
+## 1. The 30-second pitch
 
-> **"What is MoleculeMind?"**
-> 
-> "MoleculeMind is an uncertainty-aware, human-in-the-loop decision platform for molecular discovery. 
-> 
-> In traditional drug discovery, computational models spit out single numbers (e.g., 'solubility is -2.5') without saying how confident they are, leading scientists to spend tens of thousands of dollars synthesizing compounds that fail in the lab.
-> 
-> MoleculeMind solves this by pairing **machine learning prediction** with **conformal uncertainty intervals** (guaranteed statistical bounds), **chemical domain checks** (detecting when a molecule is unfamiliar), **multi-objective Pareto optimization** (balancing potency vs. solubility vs. toxicity), and **Bayesian active learning** (picking the best next experiment)."
+> "A medicinal chemist can afford maybe a few dozen lab experiments in a
+> project, out of around 10⁶⁰ possible drug-like molecules. So the real question
+> is never 'what is the best molecule' — it's 'which handful should I measure
+> next, and how much should I trust the computer's advice?'
+>
+> MoleculeMind is a decision-support tool for exactly that. It predicts
+> molecular properties, but more importantly it attaches a *calibrated*
+> uncertainty to every prediction, warns you when a molecule is outside what the
+> models actually know, finds the genuine trade-offs between competing
+> objectives, and plans experiments against a fixed budget.
+>
+> The part I'm most pleased with isn't a model — it's that I audited the original
+> codebase and found three defects that invalidated its central claims. I'll show
+> you those."
 
----
-
-## 2. Why Does Traditional Molecular ML Fail? (The Core Problem)
-
-Drug discovery takes **10 to 15 years** and costs upwards of **\$2 billion** per approved drug. More than **90% of candidate drugs fail** in clinical trials. When machine learning is applied to drug discovery, it typically fails because of three fundamental flaws:
-
-| Flaw | What Happens in Standard ML | How MoleculeMind Solves It |
-| :--- | :--- | :--- |
-| **1. The Illusion of Point Estimates** | A model predicts a single number (e.g., solubility = -2.5). Chemists don't know if the true value is $\pm 0.2$ or $\pm 3.0$. | **Split Conformal Prediction**: Replaces point estimates with distribution-free prediction intervals (e.g., $[-3.1, -1.9]$) with a proven 90% or 95% coverage guarantee. |
-| **2. Out-of-Domain Hallucination** | When given a new, unfamiliar chemical structure, models silently extrapolate and make wildly incorrect predictions with false confidence. | **OECD Applicability Domain**: Uses Tanimoto fingerprint similarity and PCA statistical leverage ($h^*$) to flag molecules as `IN_DOMAIN`, `BORDERLINE`, or `OUT_OF_DOMAIN`. |
-| **3. The Multi-Objective Conflict** | Optimizing only for potency produces "greasy bricks" — molecules that bind strongly to the target but won't dissolve in water or are highly toxic. | **Pareto Non-Dominated Sorting**: Balances 4 competing criteria simultaneously (Potency, Solubility, Toxicity Risk, Drug-likeness). |
-
----
-
-## 3. The 6 Platform Modules Explained in Plain English
-
-### Module 1: Molecular Analyzer (Chemical Validation & 3D Structure)
-* **What it does**: Takes a SMILES string (chemical text code like `CC(=O)Oc1ccccc1C(=O)O` for Aspirin), parses it using **RDKit**, and verifies whether it obeys medicinal chemistry rules.
-* **Key Concepts**:
-  * **2D Vector Depiction**: Generates clean vector SVG representations of the molecular bonds and rings.
-  * **3D MMFF94 Energy Minimization**: Uses a computational physics force field (Merck Molecular Force Field) to simulate atom repulsion/attraction and fold the molecule into its lowest-energy 3D shape.
-  * **Lipinski’s Rule of 5**: Four criteria that predict whether a pill can be swallowed and absorbed into the bloodstream (Molecular Weight $\le 500$, LogP $\le 5$, Donors $\le 5$, Acceptors $\le 10$).
-  * **Veber’s Rules**: Evaluates molecular flexibility (Rotatable Bonds $\le 10$) and Polar Surface Area ($\text{TPSA} \le 140\text{ \AA}^2$) for intestinal membrane permeability.
+**Why lead with the audit:** it is the most defensible work in the project and
+the hardest thing to fake. Anyone can import scikit-learn; finding that an
+acquisition function silently returned an identical score for every candidate,
+and tracing it to a feature-scaling bug breaking a Gaussian process's
+assumptions, is engineering judgement.
 
 ---
 
-### Module 2: Property Prediction (Aqueous Solubility)
-* **What it does**: Predicts **aqueous solubility** ($\log S$ in $\log(\text{mol/L})$) — how easily the molecule dissolves in water.
-* **The Machine Learning Model**:
-  * **Algorithm**: `ExtraTreesRegressor` (Extremely Randomized Trees ensemble, 150 estimators).
-  * **Dataset**: Delaney ESOL (1,128 experimentally measured molecules).
-  * **Features (1,032 dimensions)**:
-    1. **1,024-bit Morgan Fingerprints (ECFP4)**: Encodes circular sub-structural fragments around each atom up to radius 2.
-    2. **8 Physicochemical Descriptors**: Molecular Weight, LogP, TPSA, HBD, HBA, Rotatable Bonds, Rings, Fraction of $\text{Csp}^3$ carbons.
-  * **Empirical Performance**:
-    * $R^2 = 0.894$ on held-out test data (explains ~90% of solubility variance).
-    * $\text{RMSE} = 0.704 \log(\text{mol/L})$ (within standard laboratory assay noise).
-    * $\text{MAE} = 0.482 \log(\text{mol/L})$.
+## 2. The core problem, in one slide
+
+Traditional molecular ML hands you a single number: "solubility = −2.1". That is
+nearly useless to a chemist, for three reasons:
+
+| Problem | What goes wrong | What we do |
+|---|---|---|
+| **No uncertainty** | Is it −2.1 ± 0.1 or ± 2.0? Completely different decisions. | Conformal prediction intervals with measured coverage |
+| **Confident extrapolation** | The model will happily predict for a molecule unlike anything it trained on | Applicability domain — two independent trust checks |
+| **One objective at a time** | Real projects need solubility *and* low toxicity *and* drug-likeness | Pareto optimisation, probabilistic version included |
 
 ---
 
-### Module 3: Uncertainty Quantification (Conformal Prediction)
-* **What it does**: Instead of just saying "Solubility is -2.1", it calculates a **calibrated prediction interval** $[L, U]$ (e.g., $[-2.6, -1.6]$) at 80%, 90%, and 95% confidence.
-* **How It Works (Inductive Split Conformal Prediction)**:
-  1. We split our data into **Training (80%)**, **Calibration (10%)**, and **Test (10%)**.
-  2. The model trains on the training set only.
-  3. We run the model on the calibration set and calculate the absolute error (nonconformity score) for every calibration molecule:
-     $$s_i = |y_i - \hat{y}_i|$$
-  4. For a desired confidence level (say $90\%$, so $\alpha = 0.10$), we find the $(1 - \alpha)$ empirical quantile $q_{1-\alpha}$ of these calibration errors, adjusted for finite sample sizes:
-     $$p = \frac{\lceil (n+1)(1-\alpha) \rceil}{n}$$
-  5. For any new molecule, the prediction interval is:
-     $$C(X_{\text{new}}) = [\hat{y}_{\text{new}} - q_{1-\alpha}, \; \hat{y}_{\text{new}} + q_{1-\alpha}]$$
-* **Why this is powerful**: Unlike traditional standard deviations, conformal prediction is **distribution-free** (does not assume Gaussian bell curves) and has **finite-sample coverage guarantees** under the assumption of data exchangeability:
-  $$P\left(Y_{\text{new}} \in C(X_{\text{new}})\right) \ge 1 - \alpha$$
+## 3. The six modules in plain English
+
+### Module 1 — Molecular Analyzer
+
+Type a molecule as text (SMILES), get back its structure in 2D and 3D plus 13
+calculated properties and the Lipinski and Veber drug-likeness checks.
+
+**Say this:** "The 3D shape is an ETKDG embedding optimised with the MMFF94 force
+field. It's a *computed* low-energy guess, not an experimentally determined
+structure — a real one would come from X-ray crystallography. The API says so in
+the response."
+
+### Module 2 — Property Prediction
+
+Two trained models: water solubility (logS) and clinical-trial toxicity risk.
+
+```
+Solubility:  R² = 0.903   RMSE = 0.666   MAE = 0.484   (138 held-out molecules)
+Toxicity:    ROC-AUC = 0.832   PR-AUC = 0.358   (baseline positive rate 0.072)
+```
+
+**Say this:** "RMSE of 0.666 log units means a typical prediction is off by a
+factor of about 4.6 in actual concentration. That's honest — this model is for
+ranking and triage, not for precise numbers. And PR-AUC has to be read against
+the base rate: 0.358 against a 0.072 baseline is about five times better than
+chance, even though it looks small next to the ROC-AUC."
+
+**Every property carries a `provenance` field** — `model`, `computed`, or
+`unavailable`. Two properties are deliberately marked unavailable; see §4.
+
+### Module 3 — Conformal Prediction
+
+Turns the model's rough uncertainty into an interval with a real guarantee.
+
+1. Take 168 molecules the model never trained on (the calibration set).
+2. Record how wrong it was on each, scaled by how unsure it claimed to be.
+3. Take the ⌈(n+1)(1−α)⌉-th smallest of those scores — the 153rd of 168.
+4. New molecule's interval = prediction ± that quantile × its spread.
+
+| Nominal | Measured coverage | Mean interval width |
+|---|---|---|
+| 80% | 78.3% | 1.60 logS |
+| 90% | 88.4% | 2.14 logS |
+| 95% | 99.3% | 3.36 logS |
+
+**Say this, and say it carefully:** "A 90% interval does *not* mean this molecule
+has a 90% chance of falling inside it. It means that across many molecules, about
+90% of such intervals contain the truth. That's called marginal coverage. And it
+assumes the new molecule is exchangeable with my calibration set — which is
+exactly why the applicability domain is a *separate* check."
+
+**If asked about the 95% row:** "It over-covers. With only 168 calibration
+points, the 95% quantile is set by a handful of the worst residuals, so it ends
+up conservative. The 80% and 90% levels land within two points of target."
+
+### Module 4 — Applicability Domain
+
+Two independent checks, with thresholds **derived from the training data**, not
+asserted:
+
+| Check | Threshold | Where it comes from |
+|---|---|---|
+| Max ECFP4 Tanimoto similarity | 0.250 | 5th percentile of training leave-one-out nearest-neighbour similarity |
+| Latent-space distance | 0.358 | 95th percentile of training leave-one-out distances |
+
+Both fail → `OUT_OF_DOMAIN`. One fails → `BORDERLINE`. Neither → `IN_DOMAIN`.
+On the training set itself only **0.5%** get flagged, so the engine doesn't
+reject the data it was built from.
+
+**Say this:** "Earlier versions hardcoded 'similarity below 0.55 is suspicious'.
+Where does 0.55 come from? Nowhere — it was asserted. The right threshold depends
+entirely on how diverse your training set is, so I derive it from the training
+set's own statistics."
+
+### Module 5 — Pareto Laboratory
+
+> "A dominates B if A is at least as good on *every* objective and strictly
+> better on at least one. If A dominates B, nobody should ever pick B. The
+> molecules nothing dominates form the Pareto front — those are the real
+> trade-offs. The point is it requires no invented weights."
+
+Two rules we enforce: minimised objectives have their sign flipped, and **a
+missing value raises an error rather than defaulting to zero** — because for
+toxicity, which we minimise, zero is the *best possible* value.
+
+### Module 6 — Active Learning
+
+A Gaussian process picks which molecule to measure next, using one of four
+acquisition strategies: UCB (`μ + √β·σ`), Expected Improvement, pure uncertainty
+sampling, or greedy.
+
+**Say this clearly:** "This is **simulated laboratory mode**. Clicking 'run
+assay' reveals a measurement that already exists in the Delaney dataset and was
+being withheld from the model. No experiment is performed. The API labels every
+response `mode: simulated`. That's a legitimate way to evaluate an
+active-learning strategy, and a dishonest thing to call a lab result."
+
+### Plus — the Discovery Engine tab
+
+Four uncertainty-aware decision tools: probabilistic Pareto, the risk slider,
+the EHVI budget planner, and the molecular generator. Covered in §5 of the demo.
 
 ---
 
-### Module 4: Applicability Domain (OECD Guidance No. 69)
-* **What it does**: Checks whether the input molecule actually belongs to the chemical neighborhood the model was trained on.
-* **How It Works**:
-  1. **Tanimoto Similarity**: Calculates Jaccard distance on 1,024-bit Morgan fingerprints against the Delaney training set. Identifies the nearest training analog.
-  2. **PCA Leverage ($h$)**: Projects the molecule into PCA descriptor space and calculates statistical distance from the training centroid.
-  3. **OECD Cutoff ($h^*$)**:
-     $$h^* = \frac{3(k + 1)}{N}$$
-     Where $k$ is PCA components and $N$ is sample size.
-     * If $h \le h^*$ and Tanimoto $\ge 0.5 \implies$ `IN_DOMAIN` (Reliable).
-     * If borderline $\implies$ `BORDERLINE` (Proceed with caution).
-     * If $h > h^*$ or Tanimoto $< 0.3 \implies$ `OUT_OF_DOMAIN` (Extrapolation hazard!).
+## 4. Academic honesty — what is real and what is not
+
+Put this slide up. It is your strongest material, not your weakest.
+
+| Capability | Status | Detail |
+|---|---|---|
+| Solubility (logS) | **Trained model** | Extra Trees on 781 Delaney molecules, R² = 0.903 |
+| Toxicity (CT_TOX) | **Trained model** | Random Forest, class-weighted, ROC-AUC = 0.832 |
+| QED drug-likeness | **Deterministic calculation** | RDKit implementation of Bickerton et al. 2012 |
+| Conformal intervals | **Real, verified** | Coverage measured on held-out data |
+| Applicability domain | **Real, data-derived thresholds** | Not literature constants |
+| Active learning | **Real GP** | BoTorch `SingleTaskGP`, four acquisition functions |
+| EHVI planner | **Real, cross-verified** | Agrees with BoTorch's own `qEHVI` to 0.24% |
+| D-MPNN ensemble | **Real, matched the baseline** | R² = 0.902 vs 0.903 — honest null result |
+| Molecular generator | **Real, data-limited** | Validity 46–78%; MOSES not bundled |
+| **Target bioactivity (pIC50)** | **Unavailable — no model** | Removed; was invented arithmetic |
+| **Metabolic stability** | **Unavailable — no model** | Removed; was invented arithmetic |
+| Simulated assays | **Labelled as simulated** | Reveal withheld measurements |
+| Docking, retrosynthesis | **Not implemented** | Blocked on external tools |
+
+**The line to say about the last two unavailable rows:**
+
+> "The original code returned a pIC50 from this formula:
+> `clip(5.5 + 2.5·QED + 1.0·(similarity − 0.5), 4, 9.8)`. It was never fitted to
+> any data — the coefficients were chosen by hand. It wasn't target-specific at
+> all, and its similarity term measured resemblance to a *solubility* dataset,
+> which carries no information about binding affinity. It was being served
+> alongside genuine predictions with nothing to distinguish them, and it was
+> feeding into the Pareto optimisation.
+>
+> I removed it. Those properties now return `status: unavailable` with a reason
+> and a note on what data would be needed to enable them. I'd rather show you a
+> gap than a number I can't defend."
 
 ---
 
-### Module 5: Pareto Laboratory (Multi-Objective Optimization)
-* **What it does**: Discovers the optimal trade-off frontier between 4 competing objectives.
-* **The Objectives**:
-  1. **Bioactivity Potency ($\text{pIC}_{50}$)**: Maximized (wants strong binding to disease target).
-  2. **Aqueous Solubility ($\log S$)**: Maximized (wants easy dissolution).
-  3. **Clinical Toxicity Risk**: Minimized (wants safe compound).
-  4. **QED Drug-likeness**: Maximized (wants oral bioavailability).
-* **What is Pareto Dominance?**:
-  * Molecule A dominates Molecule B if Molecule A is at least as good as B in *all* properties and strictly better in at least one.
-  * A molecule is **Pareto-optimal (Rank 1)** if *no other molecule in the library beats it across all objectives simultaneously*.
-  * The interface plots these candidates in 2D and 3D with interactive clicking to inspect chemical structures.
+## 5. Demo script, step by step (10 minutes)
+
+Start the server beforehand — the first launch trains and caches models (~3
+minutes), every launch after is about a second.
+
+```bash
+python run.py        # then open http://127.0.0.1:8000
+```
+
+### Step 1 — Molecular Analyzer (1 min)
+
+Paste aspirin: `CC(=O)Oc1ccccc1C(=O)O`
+
+> "SMILES in, validated and canonicalised by RDKit. Canonicalisation matters
+> more than it sounds — the same molecule can be written several ways, and if
+> you're not careful the same molecule lands in both your training and test sets.
+> The raw Delaney file had 11 such duplicates and they were being split across
+> partitions. I deduplicate before splitting."
+
+Show the 2D, rotate the 3D, point at the descriptors and the Lipinski verdict.
+
+### Step 2 — Property Prediction (2 min)
+
+Same molecule.
+
+> "Here's the prediction — but look at the **90% interval**, not the number.
+> It spans about two log units. That width is the honest state of property
+> prediction from 1,100 training molecules, and it's exactly what a bare
+> prediction hides from you."
+
+Point at the provenance badges. Then scroll to the two unavailable cards.
+
+> "These two are marked unavailable. They used to return invented arithmetic.
+> That's the slide I showed you earlier."
+
+Scroll to the D-MPNN cross-check card.
+
+> "And here's a second, completely different model — a graph neural network —
+> predicting the same molecule. When two different model families on two
+> different representations agree, that's weak evidence the prediction isn't an
+> artefact of how I encoded the molecule. When they disagree by more than the
+> network's own σ, that's the interesting signal."
+
+### Step 3 — Applicability Domain (1.5 min) ← **your best story**
+
+Paste a 36-carbon chain: `CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC`
+
+> "Watch this. Tanimoto similarity to the training set comes back as **1.000** —
+> perfect. Why? Fingerprints record *local* atom environments, and every carbon
+> in a long chain has exactly the same environment as every carbon in a short
+> one. The fingerprint of this is bit-identical to hexane. **The similarity test
+> is completely blind here.**
+>
+> But the learned latent distance is 0.481 against a threshold of 0.358, so the
+> second check catches it and the molecule is correctly flagged BORDERLINE. That
+> is the single clearest argument for having two independent diagnostics instead
+> of one."
+
+### Step 4 — Pareto Laboratory (1 min)
+
+> "Three objectives: maximise solubility, maximise drug-likeness, minimise
+> toxicity. The front is the set nothing dominates. Pick any two molecules on it
+> and neither beats the other — you need a human preference to choose, which is
+> the point of a human-in-the-loop system."
+
+### Step 5 — Discovery Engine (3 min)
+
+**Probabilistic Pareto:**
+
+> "The deterministic front treats each prediction as a fact. But every objective
+> has an interval, so a molecule just inside the front with tight intervals and
+> one just outside with wide intervals are being separated by noise. So instead:
+> sample all candidates jointly 500 times, and report the *fraction* of draws in
+> which each is non-dominated."
+
+Point at the amber warning.
+
+> "And here's the honest bit. To sample, I have to impose a bell-curve shape on
+> intervals that conformal prediction deliberately leaves distribution-free. I
+> *tested* that assumption on my actual residuals — excess kurtosis 1.416,
+> normality rejected. Real errors have heavier tails than a bell curve, so these
+> probabilities are mildly optimistic for molecules whose membership depends on a
+> rare large error. The interface tells you that rather than hiding it."
+
+**Risk slider:** drag λ from 0 to 1.
+
+> "λ = 0 ranks by the prediction alone — play safe. λ = 1 gives uncertainty full
+> weight — favour molecules that *might* be excellent. Note the sign flips for
+> minimised objectives: being optimistic about toxicity means assuming a *lower*
+> number."
+
+**Budget planner:** set a budget, build the plan.
+
+> "Assays have costs. This picks molecule–assay pairs to maximise Expected
+> Hypervolume Improvement — how much we expect the trade-off front to improve —
+> subject to the budget."
+
+Then open `/api/planner/validate-ehvi` in a new tab.
+
+> "And because it's easy to write a `μ + kσ` score and *call* it EHVI, I verified
+> it two ways. In one dimension EHVI must reduce to Expected Improvement, which
+> has a closed form, and mine matches it. And it agrees with BoTorch's own qEHVI
+> to 0.24% on a shared posterior. This endpoint runs that comparison live."
+
+**Generator:** generate at temperature 0.8.
+
+> "A character-level language model that learned to write SMILES, then tuned by
+> reinforcement learning. Validity is around 60% here, and I know exactly why:
+> the method calls for pre-training on 1.9 million MOSES molecules and I trained
+> on the 2,512 I have locally. That's 750× less data. It's a data limitation, not
+> a code limitation — `scripts/download_moses.py` documents how to close it."
+
+### Step 6 — Active Learning (1 min)
+
+Select the top-ranked candidate, run the assay.
+
+> "The ranking updates because the Gaussian process has been refit on the
+> enlarged labelled set, and the conformal calibration is refreshed too —
+> reusing the old quantile after the data changed would silently misstate
+> coverage. Again: simulated, revealing a withheld measurement."
+
+### Step 7 — Benchmarking (30 sec)
+
+> "Four models on the same held-out molecules. And I want to point at this row
+> deliberately: the graph neural network got R² 0.902 against the Extra Trees
+> baseline's 0.903. **It did not win.** That's the expected result at 1,100
+> training molecules — the literature puts the crossover much higher. I kept it
+> for the calibrated per-molecule uncertainty, the learned latent space that
+> caught that long alkane, and a multi-task gain that lifted toxicity ROC-AUC
+> from 0.832 to 0.866. Not for regression accuracy."
+
+Every number on this page is computed at startup from a held-out split. Nothing
+is hardcoded — and the report downloads as JSON or CSV.
 
 ---
 
-### Module 6: Active Learning (BoTorch Bayesian Optimization)
-* **What it does**: Simulates how a pharmaceutical lab decides which molecules to synthesize next when assay budgets are limited.
-* **The Workflow Loop**:
-  1. **Seed Pool**: Start with a small set of assayed molecules.
-  2. **Surrogate Model**: Fit a **BoTorch SingleTaskGP** (Gaussian Process) over the chemical fingerprints.
-  3. **Acquisition Function**: Mathematically score all unassayed candidates:
-     * **qUCB (Upper Confidence Bound)**: $\alpha(x) = \mu(x) + \beta \sigma(x)$ (Balances predicted high mean $\mu$ with high uncertainty $\sigma$).
-     * **Expected Improvement (EI)**: Measures probability of beating the current best compound.
-     * **Uncertainty Sampling**: Pure exploration of unexplored chemical regions ($\sigma(x)$).
-  4. **Virtual Wet-Lab Assay**: Chemist selects top candidates $\to$ runs simulated assay $\to$ reveals ground-truth label.
-  5. **Model Retraining**: GP posterior updates, shrinking uncertainty near newly tested compounds.
+## 6. Likely questions, with answers you can defend
+
+**Q: "Why conformal prediction rather than a Bayesian neural network or MC dropout?"**
+> "Conformal prediction is distribution-free and model-agnostic — it wraps any
+> model and gives a finite-sample coverage guarantee that I can *measure*. A
+> Bayesian neural network's credible intervals are only as good as its prior and
+> its approximate inference, and MC dropout's uncertainty has no coverage
+> guarantee at all. I can show you empirically that my 90% intervals cover 88.4%
+> of held-out molecules. Neither alternative lets me make that check so directly."
+
+**Q: "What's the assumption behind conformal prediction, and when does it break?"**
+> "Exchangeability — the new molecule has to come from the same distribution as
+> the calibration set. It breaks exactly when you move to new chemistry, which
+> is the common case in drug discovery. That's not a flaw I can patch inside
+> conformal prediction, so I built the applicability domain as an independent
+> check on whether the assumption is plausible for a given query."
+
+**Q: "Why Extra Trees instead of a deep learning model?"**
+> "I built both. Extra Trees gets R² 0.903; the D-MPNN ensemble gets 0.902 on
+> the same held-out molecules. Tree ensembles are extremely strong on small
+> tabular datasets, and 1,100 molecules is small. I kept the neural network for
+> three things trees can't give me — a calibrated per-molecule σ from a model
+> trained to predict its own error, a learned latent space for the applicability
+> domain, and a multi-task gain on toxicity — but I'm not going to claim it beat
+> the baseline when it didn't."
+
+**Q: "What features did you use?"**
+> "1024-bit Morgan fingerprints at radius 2, plus eight physicochemical
+> descriptors — 1032 numbers. And a warning from experience: those are on wildly
+> different scales. Fingerprint bits are 0 or 1, molecular weight is in the
+> hundreds. On the raw matrix, molecular weight accounts for 90.9% of all
+> variance. I hit that bug twice in two different modules before I learned to
+> standardise everything that's scale-sensitive."
+
+**Q: "How does active learning balance exploration and exploitation?"**
+> "Four strategies. UCB scores `μ + √β·σ`, so β tunes the balance directly.
+> Expected Improvement computes the expected gain over the best measurement so
+> far. Uncertainty sampling uses σ alone — pure exploration. Greedy uses μ alone
+> — pure exploitation. The Discovery Engine's risk slider exposes the same
+> trade-off continuously through λ."
+
+**Q: "Is your EHVI really EHVI?"**
+> "Yes, and I verified it rather than asserting it. Two independent checks: in
+> one dimension EHVI reduces analytically to Expected Improvement and mine
+> matches the closed form to within sampling error — a `μ + kσ` heuristic cannot
+> reproduce that curve. And it agrees with BoTorch's own implementation to 0.24%
+> on a shared posterior. There's a live endpoint that runs the comparison."
+
+**Q: "Why not just use BoTorch's qEHVI directly?"**
+> "Because qEHVI integrates over a Gaussian process posterior, and my
+> uncertainties don't come from a GP — they come from a neural ensemble
+> calibrated by conformal prediction. Using qEHVI would mean fitting a GP to my
+> own predictions and integrating over *that*, which throws away the calibration
+> that's the whole point of the project. So I kept my calibrated distribution and
+> verified my maths against theirs."
+
+**Q: "What was actually wrong with the original code?"**
+> "Three things that invalidated its claims. First, it sent the hidden answers to
+> the browser — the active-learning endpoint returned the true values for every
+> candidate including the supposedly hidden ones, so you could read the answer
+> key in developer tools. Second, its acquisition function gave all 24 candidates
+> an *identical* score — UCB returned 1.414 for every one — so the ranking was
+> meaningless. I traced that to PCA on unstandardised features: components
+> spanned −113 to +178, BoTorch's Gaussian process assumes inputs near 0 to 1, so
+> the posterior collapsed to the prior. Third, two of its four objectives were
+> hand-written arithmetic presented as trained models. All three are fixed with
+> regression tests so they can't silently come back."
+
+**Q: "How do you know your tests are meaningful?"**
+> "309 tests, and the important ones check mathematics against independent
+> ground truth rather than against themselves. The graph network's message
+> passing is recomputed by brute force over every edge and compared to the fast
+> version. EHVI is checked against a closed-form formula and against BoTorch.
+> Conformal coverage is verified on synthetic data where I know the answer. And
+> four bugs were found by the tests during development, including that my
+> ensemble wasn't reproducible for a fixed seed because I was seeding after
+> constructing the model instead of before."
+
+**Q: "What are you least confident about?"**
+> "The scaffold-split result. R² 0.890 versus 0.903 on a random split reads as
+> though the model generalises well to new chemical series. But ESOL contains
+> many chain-like molecules with no rings, and each becomes its own
+> single-member scaffold group, so for that portion the scaffold split degenerates
+> towards a random one. I would not claim strong generalisation to new chemotypes
+> from that number."
+
+**Q: "What would you do next?"**
+> "Not add modules — I deliberately stopped. Three things: get MOSES so the
+> generator's validity reflects the method rather than my data budget; run
+> multiple seeds so I can put a confidence interval on R² instead of quoting one
+> number; and find a curated bioactivity dataset so pIC50 can come back as a
+> genuine model rather than staying marked unavailable."
 
 ---
 
-## 4. Academic Honesty: Real ML vs. Simulated Heuristics
+## 7. Numbers to memorise
 
-When presenting to a professor, transparency earns the highest marks. Here is the exact breakdown:
-
-| Component | Status | Implementation Details |
-| :--- | :--- | :--- |
-| **Aqueous Solubility ($\log S$)** | **100% Genuine ML** | Trained `ExtraTreesRegressor` on 1,128 Delaney ESOL molecules. $R^2 = 0.894$. |
-| **Conformal Prediction** | **100% Genuine ML** | Inductive Split Conformal on held-out calibration set. 80%, 90%, 95% quantiles. |
-| **Applicability Domain** | **100% Genuine ML** | Morgan Fingerprint Tanimoto nearest neighbor + PCA leverage ($h^*$). |
-| **Pareto Sorting** | **100% Genuine Algorithm** | Non-dominated sorting across 4 simultaneous objectives. |
-| **Active Learning GP** | **100% Genuine ML** | BoTorch / GPyTorch `SingleTaskGP` with UCB/EI acquisition functions. |
-| **Toxicity Risk** | **ML Pipeline** | ClinTox Random Forest classifier trained on FDA approval data. |
-| **EGFR $\text{pIC}_{50}$ Bioactivity** | **Heuristic Formula** | Formula-derived in current prototype (`5.5 + 2.5*QED + 1.0*(Tanimoto - 0.5)`). |
-| **Metabolic Stability ($t_{1/2}$)** | **Heuristic Formula** | Formula-derived (`60 - 5*LogP - 2*RotBonds + 10*QED`). |
-
-> **What to tell your teacher**:
-> *"Our core machine learning pipelines — Delaney ESOL solubility regression, inductive conformal prediction intervals, OECD applicability domain leverage, and BoTorch Gaussian Process active learning — are 100% authentic trained models. For bioactivity ($\text{pIC}_{50}$) and metabolic clearance, our prototype uses calibrated heuristic formulas while the Chemprop directed message-passing neural network pipeline is scheduled for Phase 2 integration."*
-
----
-
-## 5. Step-by-Step Presentation & Demo Script (Word-for-Word)
-
-### Time: 5 to 7 Minutes
-
-#### Step 1: Introduction & Landing Page (1 Minute)
-* **On Screen**: Open `http://127.0.0.1:8000/`. You will see the new editorial dark aesthetic with the smooth floating 3D molecular orb and live compound showcase.
-* **What to say**:
-  > *"Good morning professor. Today I am presenting **MoleculeMind**, an uncertainty-aware, multi-objective molecular discovery platform. 
-  > Most molecular ML models act as black boxes: they output a single predicted number without telling the chemist how uncertain they are or whether the molecule is outside the model's training distribution. 
-  > MoleculeMind bridges the gap between raw computational predictions and verifiable wet-lab certainty."*
-
-#### Step 2: The Interactive Showcase on Landing Page (30 Seconds)
-* **On Screen**: Scroll down to **"Evaluate Real Chemical Structures"**. Click **"Aspirin"**, then click **"Imatinib core"**.
-* **What to say**:
-  > *"Notice how Aspirin has high solubility ($\log S = -1.61$) and is verified `IN_DOMAIN`. But when we select Imatinib core — a complex kinase inhibitor — its leverage exceeds the OECD boundary and our platform immediately flags it as `OUT_OF_DOMAIN`, warning the chemist that the model is extrapolating."*
-* Click **"Launch Interactive Workbench"** (or click Aspirin's **"Analyze in Prediction Workbench"**).
-
-#### Step 3: Stage 01 — Molecular Analyzer (1 Minute)
-* **On Screen**: You are now in the workbench on **Stage 01: Molecular Analyzer**.
-* **What to do**: Click the **Presets** pill for **"Caffeine"** or **"Aspirin"**, then click **"Analyze Molecule"**.
-* **What to show**:
-  * The 2D vector structure and interactive 3D conformer generated by RDKit MMFF94 force field.
-  * The Lipinski Rule of 5 and Veber bioavailability badges.
-* **What to say**:
-  > *"Stage 1 evaluates the fundamental chemistry. Using RDKit, we parse the SMILES representation, optimize the 3D conformer via MMFF94 energy minimization, and assess oral drug-likeness through Lipinski's Rule of 5 and Veber membrane permeability rules."*
-* Click **"Predict Properties →"** (or click Tab 02).
-
-#### Step 4: Stages 02 & 03 — Prediction & Conformal Calibration (1.5 Minutes)
-* **On Screen**: Tab 02 — **Property Prediction & Uncertainty Engine**.
-* **What to show**:
-  * Point estimate: $\log S = -1.61$.
-  * Conformal Prediction Interval: switch between `80%`, `90%`, and `95%` confidence pills.
-  * Applicability Domain: Reliability score, Max Tanimoto similarity to Delaney training set, and OECD leverage ($h$).
-* **What to say**:
-  > *"This is the core contribution of our work. Rather than just offering a point prediction of $-1.61$, we use **Inductive Split Conformal Prediction**. 
-  > By calibrating on nonconformity residuals from a held-out calibration set, we generate a distribution-free confidence interval — for example, $[-2.12, -1.09]$ at 90% confidence. This interval has a mathematically proven coverage guarantee without assuming Gaussian error distributions.
-  > Furthermore, our OECD Applicability Domain engine calculates Morgan fingerprint similarity and statistical leverage to verify that we aren't extrapolating beyond Delaney chemical space."*
-
-#### Step 5: Stage 04 — Pareto Laboratory (1.5 Minutes)
-* **On Screen**: Click Tab 03 — **Pareto Lab**.
-* **What to show**:
-  * The 2D scatter plot with the dashed Pareto frontier line.
-  * Switch between `2D Scatter` and `3D Multi-Cube`.
-  * Click on a white diamond (Pareto optimal) vs. a gray dot (Dominated).
-  * Show the candidate inspection card on the right with the decision rationale.
-* **What to say**:
-  > *"In medicinal chemistry, you can rarely optimize just one property. Maximizing binding potency often makes a drug insoluble or toxic. 
-  > Here, our Pareto Laboratory performs non-dominated sorting across four simultaneous objectives: bioactivity, solubility, toxicity risk, and drug-likeness. 
-  > The white diamonds represent non-dominated Pareto leads: candidates where you cannot improve any property without sacrificing another. When I click a candidate, the system displays the exact decision rationale and trade-off metrics."*
-
-#### Step 6: Stage 05 — Active Learning Queue (1 Minute)
-* **On Screen**: Click Tab 04 — **Active Learning**.
-* **What to show**:
-  * Strategy selector: `qUCB`, `Expected Improvement`, `Uncertainty`.
-  * Select 1 or 2 candidate checkboxes.
-  * Click **"Run Wet-Lab Assay"** (confetti triggers, round increments from 0 to 1, table updates).
-* **What to say**:
-  > *"Finally, Stage 5 simulates how a laboratory conducts iterative discovery under budget constraints. 
-  > We fit a BoTorch Gaussian Process surrogate model that predicts mean utility ($\mu$) and epistemic uncertainty ($\sigma$). 
-  > Using acquisition strategies like Upper Confidence Bound (qUCB), we mathematically prioritize the most informative molecules to test. 
-  > When we run an assay, the simulated wet-lab experiment reveals the true measurement, the Gaussian Process updates its posterior covariance, and uncertainty shrinks in that chemical region."*
-
-#### Step 7: Conclusion & Benchmark Tab (30 Seconds)
-* **On Screen**: Click Tab 05 — **ESOL Benchmark**.
-* **What to show**:
-  * $R^2 = 0.894$, $\text{RMSE} = 0.704$, parity correlation plot, and empirical conformal test coverage table ($91.2\% \ge 90\%$).
-* **What to say**:
-  > *"Our benchmarks on the peer-reviewed Delaney dataset confirm an $R^2$ of 0.894 and an empirical test set coverage of over 91% on our 90% conformal intervals, proving that our uncertainty bounds hold up on unseen test compounds. 
-  > Thank you, and I am happy to answer any questions."*
+| Quantity | Value |
+|---|---|
+| ESOL molecules (after dedup) | 1,117 (from 1,128; **11 duplicates removed**) |
+| Split | 781 train / 168 calibration / 138 test / 30 AL pool |
+| Solubility R², RMSE | **0.903**, 0.666 |
+| Scaffold-split R² | 0.890 |
+| 90% conformal coverage, width | **88.4%**, 2.14 logS |
+| ClinTox ROC-AUC / PR-AUC / baseline | 0.832 / 0.358 / 0.072 |
+| D-MPNN R² (5-member ensemble) | **0.902** — matched, did not beat |
+| D-MPNN multi-task toxicity ROC-AUC | 0.866 (up from 0.832) |
+| Independent Random Forest R² | 0.877, agreement r = 0.944 |
+| AD thresholds (similarity / latent) | 0.250 / 0.358 |
+| Training molecules flagged out-of-domain | 0.5% |
+| EHVI agreement with BoTorch | **0.24%** |
+| Residual excess kurtosis | 1.416 (normality rejected) |
+| Generator corpus / validity | 2,512 SMILES / 46–78% |
+| Tests | **309**, all passing |
 
 ---
 
-## 6. Likely Teacher Questions & Perfect Answers
+## 8. Five things never to say
 
-### Q1: "Why did you use Conformal Prediction instead of Bayesian Neural Networks or MC Dropout?"
-> **Answer**:
-> *"Bayesian Neural Networks and Monte Carlo Dropout require strong prior assumptions, are computationally expensive to sample, and their confidence intervals do not have finite-sample statistical guarantees. 
-> Conformal Prediction is distribution-free: under the mild assumption of data exchangeability, it provides a mathematically rigorous guarantee that the true value falls inside the interval with probability at least $1 - \alpha$, regardless of model architecture or error distribution."*
-
-### Q2: "What is the assumption behind Conformal Prediction, and when does it break down?"
-> **Answer**:
-> *"The foundational assumption of Conformal Prediction is **exchangeability** between the calibration set and new test molecules (a generalization of i.i.d.). 
-> It breaks down under severe **distributional shift** — for example, if we test a complex synthetic macrocycle when our calibration set only contains small organic fragments. That is exactly why we coupled Conformal Prediction with our **Applicability Domain module**: if a molecule is flagged `OUT_OF_DOMAIN`, the exchangeability assumption is violated and the conformal guarantee no longer strictly holds."*
-
-### Q3: "What features did you feed into your ML models?"
-> **Answer**:
-> *"We used a concatenated 1,032-dimensional feature vector:
-> 1. 1,024-bit Morgan Fingerprints (ECFP4, radius 2), which capture 2D sub-structural atomic environments.
-> 2. 8 RDKit physicochemical descriptors: Molecular Weight, MolLogP, TPSA, Hydrogen Bond Donors, Hydrogen Bond Acceptors, Rotatable Bonds, Total Ring Count, and Fraction of Csp3 carbons."*
-
-### Q4: "Why ExtraTreesRegressor instead of a Deep Learning model like Chemprop?"
-> **Answer**:
-> *"For tabular molecular datasets of this size (Delaney ESOL has 1,128 compounds), tree ensembles like ExtraTrees and Random Forests consistently achieve state-of-the-art results ($R^2 = 0.894$) without the extreme overfitting and hyperparameter fragility of deep message-passing neural networks. Chemprop is architected for large-scale bioactivity screens ($>10,000$ molecules), which is our planned extension."*
-
-### Q5: "How does the active learning acquisition function decide between exploration and exploitation?"
-> **Answer**:
-> *"In our Upper Confidence Bound (qUCB) policy, $\alpha_{\text{UCB}}(x) = \mu(x) + \beta \cdot \sigma(x)$. 
-> The mean $\mu(x)$ represents exploitation — choosing molecules predicted to have high potency. 
-> The variance $\sigma(x)$ represents exploration — choosing molecules where the Gaussian Process has high epistemic uncertainty. 
-> By tuning the exploration coefficient $\beta$ (which we expose as a live slider from 0.5 to 5.0), the chemist can dictate whether the algorithm stays conservative or explores novel chemical territory."*
+1. ~~"The model is 90% accurate."~~ → "90% of intervals contain the truth, on average across molecules."
+2. ~~"We ran assays."~~ → "Simulated assays that reveal withheld measurements."
+3. ~~"Our neural network outperforms the baseline."~~ → "It matched it — 0.902 versus 0.903 — which is the expected result at this data scale."
+4. ~~"We predict bioactivity."~~ → "Bioactivity is marked unavailable; we have no dataset for it."
+5. ~~"The molecule is 85% likely to be on the Pareto front."~~ → "In 85% of sampled outcomes it was non-dominated *by this candidate pool, under this model*."
