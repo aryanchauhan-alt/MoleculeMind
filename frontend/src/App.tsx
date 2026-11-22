@@ -12,7 +12,6 @@ import { DiscoveryModule } from './components/instrument/DiscoveryModule';
 import { CampaignModule } from './components/instrument/CampaignModule';
 import { BenchmarkModule } from './components/instrument/BenchmarkModule';
 import { BootSequence } from './components/instrument/primitives';
-import { Atom } from 'lucide-react';
 
 function AppInner() {
   const scene = useScene();
@@ -111,7 +110,7 @@ function AppInner() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col in-grain relative" style={{ color: 'var(--in-text)' }}>
+    <div className="min-h-screen flex flex-col relative" style={{ background: 'var(--pp-paper)', color: 'var(--pp-ink)' }}>
       {/* Editorial Luxury Agency Cursor */}
       <AgencyCursor />
 
@@ -120,8 +119,6 @@ function AppInner() {
         {!booted && <BootSequence ready={backendHealthy} onDone={() => setBooted(true)} />}
       </AnimatePresence>
 
-      {/* Measurement grid, very faint, behind the WebGL layer */}
-      <div className="fixed inset-0 in-grid-bg pointer-events-none z-0 opacity-50" />
 
       {/* View 1: Editorial Landing Page */}
       {currentView === 'landing' ? (
@@ -177,31 +174,33 @@ function AppInner() {
           </main>
 
           {/* Scientific Platform Editorial Footer */}
-          <footer className="mt-auto border-t border-white/[0.06] bg-[#050608]/90 backdrop-blur-xl py-6 text-xs text-slate-400 font-mono">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
-              <div className="flex items-center gap-2.5">
-                <Atom className="w-4 h-4 text-white" />
-                <span className="text-slate-200 font-medium">MoleculeMind Decision Platform</span>
-                <span className="text-slate-600">//</span>
-                <span className="text-slate-400">RDKit · PyTorch · BoTorch · Scikit-learn · 3Dmol.js</span>
+          <footer
+            className="mt-auto"
+            style={{ borderTop: '1px solid var(--pp-rule)', background: 'var(--pp-paper)' }}
+          >
+            <div className="max-w-[1400px] mx-auto px-5 sm:px-8 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+              <div>
+                <div className="in-display text-sm">MoleculeMind</div>
+                <div className="in-label mt-1.5">
+                  RDKit · scikit-learn · PyTorch · BoTorch · FastAPI
+                </div>
               </div>
-
-              <div className="flex items-center gap-4 text-[11px] text-slate-400">
-                <button 
-                  onClick={handleReturnToLanding} 
-                  className="hover:text-white transition-colors cursor-pointer"
+              <div className="flex items-center gap-5">
+                <button
+                  onClick={handleReturnToLanding}
+                  className="in-label hover:opacity-60 transition-opacity cursor-pointer"
                 >
-                  Return to Overview
+                  overview
                 </button>
-                <span>·</span>
-                <button 
-                  onClick={() => setIsGlossaryOpen(true)} 
-                  className="hover:text-white transition-colors cursor-pointer"
+                <button
+                  onClick={() => setIsGlossaryOpen(true)}
+                  className="in-label hover:opacity-60 transition-opacity cursor-pointer"
                 >
-                  Scientific Methodology
+                  methodology
                 </button>
-                <span>·</span>
-                <span className="text-slate-300 font-medium">P(Y ∈ [L, U]) ≥ 1 - α</span>
+                <span className="in-num text-[10px]" style={{ color: 'var(--pp-faint)' }}>
+                  P(Y &isin; [L, U]) &ge; 1 &minus; &alpha;
+                </span>
               </div>
             </div>
           </footer>

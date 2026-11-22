@@ -40,10 +40,10 @@ export const Nav: React.FC<NavProps> = ({ active, onChange, backendHealthy, onHo
   <header
     className="sticky top-0 z-30"
     style={{
-      background: 'color-mix(in srgb, var(--in-base) 72%, transparent)',
-      backdropFilter: 'blur(28px) saturate(1.2)',
-      WebkitBackdropFilter: 'blur(28px) saturate(1.2)',
-      borderBottom: '1px solid var(--in-line)',
+      // Solid, not translucent. backdrop-filter over scrolling content was
+      // the single largest frame cost in the previous theme.
+      background: 'var(--pp-paper)',
+      borderBottom: '1px solid var(--pp-rule)',
     }}
   >
     <div className="max-w-[1400px] mx-auto px-5 sm:px-8">

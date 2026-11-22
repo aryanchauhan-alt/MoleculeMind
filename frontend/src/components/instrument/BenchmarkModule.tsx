@@ -33,7 +33,7 @@ export const BenchmarkModule: React.FC = () => {
   if (error) {
     return (
       <div className="max-w-[1400px] mx-auto px-5 sm:px-8 py-14">
-        <div className="in-panel p-6" style={{ borderColor: 'rgba(240,113,91,0.25)' }}>
+        <div className="in-panel p-6" style={{ borderColor: 'rgba(179,38,30,0.3)' }}>
           <p className="text-xs" style={{ color: 'var(--in-dim)' }}>{error}</p>
         </div>
       </div>
@@ -153,7 +153,7 @@ export const BenchmarkModule: React.FC = () => {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={`${r.model}-${r.split}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                <tr key={`${r.model}-${r.split}`} style={{ borderBottom: '1px solid var(--pp-rule-soft)' }}>
                   <td className="py-3 px-3" style={{ color: r.accent ? 'var(--in-signal)' : 'var(--in-text)' }}>
                     {r.model}
                   </td>
@@ -195,7 +195,7 @@ export const BenchmarkModule: React.FC = () => {
                     mode: 'lines',
                     type: 'scatter',
                     name: 'perfect',
-                    line: { color: 'rgba(255,255,255,0.18)', dash: 'dot', width: 1 },
+                    line: { color: 'rgba(23,23,26,0.2)', dash: 'dot', width: 1 },
                     hoverinfo: 'skip',
                   },
                   {
@@ -234,14 +234,14 @@ export const BenchmarkModule: React.FC = () => {
                         measured {got}%
                       </span>
                     </div>
-                    <div className="relative h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div className="relative h-1.5 rounded-full" style={{ background: 'var(--pp-rule-soft)' }}>
                       <div
                         className="absolute inset-y-0 left-0 rounded-full"
                         style={{ width: `${got}%`, background: 'var(--in-signal)' }}
                       />
                       <div
                         className="absolute inset-y-[-3px] w-[1px]"
-                        style={{ left: `${nominal}%`, background: 'var(--in-text)' }}
+                        style={{ left: `${nominal}%`, background: 'var(--pp-ink)' }}
                         title={`nominal ${nominal}%`}
                       />
                     </div>
@@ -270,7 +270,7 @@ export const BenchmarkModule: React.FC = () => {
                   { l: 'PR-AUC', v: clintox.pr_auc, accent: true },
                   { l: 'baseline rate', v: clintox.baseline_pr_auc },
                 ].map((s) => (
-                  <div key={s.l} className="p-4 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                  <div key={s.l} className="p-4 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                     <div className="in-label">{s.l}</div>
                     <div className="in-num text-xl mt-1.5" style={{ color: s.accent ? 'var(--in-signal)' : 'var(--in-text)' }}>
                       {s.v}
@@ -300,7 +300,7 @@ export const BenchmarkModule: React.FC = () => {
                     v: `${(data.applicability_domain.training_flag_rate * 100).toFixed(1)}%`,
                   },
                 ].map((s) => (
-                  <div key={s.l} className="p-4 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                  <div key={s.l} className="p-4 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                     <div className="in-label">{s.l}</div>
                     <div className="in-num text-lg mt-1.5">{s.v}</div>
                   </div>

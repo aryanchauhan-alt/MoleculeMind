@@ -102,7 +102,7 @@ export const ParetoModule: React.FC<{ onSelect?: (smiles: string) => void }> = (
             color: PLOT_COLORS.signal,
             size: 13,
             symbol: 'diamond' as const,
-            line: { color: '#ffffff', width: 1 },
+            line: { color: 'rgba(23,23,26,0.35)', width: 1 },
           }
         : { color: PLOT_COLORS.faint, size: 7, opacity: 0.55 },
     });
@@ -134,7 +134,7 @@ export const ParetoModule: React.FC<{ onSelect?: (smiles: string) => void }> = (
       )}
 
       {error && (
-        <div className="in-panel p-6" style={{ borderColor: 'rgba(240,113,91,0.25)' }}>
+        <div className="in-panel p-6" style={{ borderColor: 'rgba(179,38,30,0.3)' }}>
           <p className="text-xs" style={{ color: 'var(--in-dim)' }}>{error}</p>
         </div>
       )}
@@ -194,7 +194,7 @@ export const ParetoModule: React.FC<{ onSelect?: (smiles: string) => void }> = (
                   <div
                     key={sel.label}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-full"
-                    style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid var(--in-line)' }}
+                    style={{ background: 'var(--pp-sunken)', border: '1px solid var(--in-line)' }}
                   >
                     <span className="in-label">{sel.label}</span>
                     <select
@@ -215,8 +215,8 @@ export const ParetoModule: React.FC<{ onSelect?: (smiles: string) => void }> = (
                   onClick={() => setFrontOnly((v) => !v)}
                   className="in-btn px-3.5 py-1.5 cursor-pointer"
                   style={{
-                    background: frontOnly ? 'var(--in-signal)' : 'rgba(0,0,0,0.35)',
-                    color: frontOnly ? '#04161A' : 'var(--in-dim)',
+                    background: frontOnly ? 'var(--in-signal)' : 'var(--pp-sunken)',
+                    color: frontOnly ? '#FFFFFF' : 'var(--in-dim)',
                     border: `1px solid ${frontOnly ? 'var(--in-signal)' : 'var(--in-line)'}`,
                   }}
                 >
@@ -272,14 +272,14 @@ export const ParetoModule: React.FC<{ onSelect?: (smiles: string) => void }> = (
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   {data.objectives.map((k: string) => (
-                    <div key={k} className="p-4 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                    <div key={k} className="p-4 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                       <div className="in-label">{k.replace(/_/g, ' ')}</div>
                       <div className="in-num text-lg mt-1.5" style={{ color: 'var(--in-signal)' }}>
                         {selected[k]}
                       </div>
                     </div>
                   ))}
-                  <div className="p-4 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                  <div className="p-4 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                     <div className="in-label">90% interval, logS</div>
                     <div className="in-num text-sm mt-1.5">
                       [{selected.solubility_lower_90}, {selected.solubility_upper_90}]
@@ -328,8 +328,8 @@ export const ParetoModule: React.FC<{ onSelect?: (smiles: string) => void }> = (
                       onClick={() => setSelected(c)}
                       className="cursor-pointer transition-colors"
                       style={{
-                        borderBottom: '1px solid rgba(255,255,255,0.03)',
-                        background: selected?.id === c.id ? 'rgba(76,224,224,0.04)' : 'transparent',
+                        borderBottom: '1px solid var(--pp-rule-soft)',
+                        background: selected?.id === c.id ? 'var(--pp-accent-wash)' : 'transparent',
                       }}
                     >
                       <td className="py-2.5 px-3">{c.name}</td>

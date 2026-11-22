@@ -30,8 +30,8 @@ const Caveat: React.FC<{ children: React.ReactNode; warn?: boolean }> = ({ child
   <div
     className="mt-5 p-4 rounded-2xl text-[11px] leading-relaxed flex gap-3"
     style={{
-      background: warn ? 'rgba(240,179,91,0.05)' : 'rgba(0,0,0,0.25)',
-      border: `1px solid ${warn ? 'rgba(240,179,91,0.22)' : 'var(--in-line)'}`,
+      background: warn ? 'var(--pp-caution-wash)' : 'var(--pp-sunken)',
+      border: `1px solid ${warn ? 'rgba(180,83,15,0.25)' : 'var(--in-line)'}`,
       color: warn ? 'rgba(240,179,91,0.9)' : 'var(--in-dim)',
     }}
   >
@@ -211,8 +211,8 @@ export const DiscoveryModule: React.FC = () => {
                 onClick={() => setPanel(p.id)}
                 className="in-btn px-4 py-2.5 cursor-pointer flex items-center gap-2"
                 style={{
-                  background: on ? 'var(--in-signal)' : 'rgba(0,0,0,0.3)',
-                  color: on ? '#04161A' : 'var(--in-dim)',
+                  background: on ? 'var(--in-signal)' : 'var(--pp-sunken)',
+                  color: on ? '#FFFFFF' : 'var(--in-dim)',
                   border: `1px solid ${on ? 'var(--in-signal)' : 'var(--in-line)'}`,
                   fontWeight: on ? 600 : 400,
                 }}
@@ -252,7 +252,7 @@ export const DiscoveryModule: React.FC = () => {
                       { l: 'pre-filtered', v: prob.diagnostics.n_prefiltered, d: 0 },
                     ].map((s) => (
                       <StaggerItem key={s.l}>
-                        <div className="p-5 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                        <div className="p-5 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                           <div className="in-label">{s.l}</div>
                           <div
                             className="in-num text-2xl font-light mt-2"
@@ -278,7 +278,7 @@ export const DiscoveryModule: React.FC = () => {
                                 (c: any) => c[`${prob.objectives[0]}_sigma_tilde`]
                               ),
                               visible: true,
-                              color: 'rgba(138,147,163,0.3)',
+                              color: 'rgba(23,23,26,0.22)',
                               thickness: 1,
                               width: 2,
                             },
@@ -288,7 +288,7 @@ export const DiscoveryModule: React.FC = () => {
                                 (c: any) => c[`${prob.objectives[1]}_sigma_tilde`]
                               ),
                               visible: true,
-                              color: 'rgba(138,147,163,0.3)',
+                              color: 'rgba(23,23,26,0.22)',
                               thickness: 1,
                               width: 2,
                             },
@@ -304,8 +304,8 @@ export const DiscoveryModule: React.FC = () => {
                               size: 13,
                               color: prob.candidates.map((c: any) => c.probability_pareto_optimal),
                               colorscale: [
-                                [0, '#2A3140'],
-                                [0.5, '#2E7F8C'],
+                                [0, '#D8D7D0'],
+                                [0.5, '#8E8EE8'],
                                 [1, PLOT_COLORS.signal],
                               ],
                               cmin: 0,
@@ -316,7 +316,7 @@ export const DiscoveryModule: React.FC = () => {
                                 thickness: 10,
                                 tickfont: { size: 9, family: 'JetBrains Mono, monospace' },
                               },
-                              line: { color: 'rgba(255,255,255,0.25)', width: 1 },
+                              line: { color: 'rgba(23,23,26,0.25)', width: 1 },
                             },
                           },
                         ] as any}
@@ -338,7 +338,7 @@ export const DiscoveryModule: React.FC = () => {
                       </thead>
                       <tbody>
                         {prob.candidates.slice(0, 10).map((c: any) => (
-                          <tr key={c.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                          <tr key={c.id} style={{ borderBottom: '1px solid var(--pp-rule-soft)' }}>
                             <td className="py-2.5 px-3">{c.name}</td>
                             <td className="py-2.5 px-3">
                               <div className="flex items-center gap-2.5">
@@ -446,7 +446,7 @@ export const DiscoveryModule: React.FC = () => {
                               key={c.id}
                               layout
                               transition={{ duration: DUR.base, ease: EASE }}
-                              style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                              style={{ borderBottom: '1px solid var(--pp-rule-soft)' }}
                             >
                               <td className="py-2.5 px-3 in-num" style={{ color: 'var(--in-faint)' }}>
                                 {String(i + 1).padStart(2, '0')}
@@ -520,7 +520,7 @@ export const DiscoveryModule: React.FC = () => {
                     onClick={() => loadPlan(budget)}
                     disabled={planBusy}
                     className="in-btn px-6 py-3 cursor-pointer disabled:opacity-40 whitespace-nowrap"
-                    style={{ background: 'var(--in-signal)', color: '#04161A', fontWeight: 600 }}
+                    style={{ background: 'var(--in-signal)', color: '#FFFFFF', fontWeight: 600 }}
                   >
                     {planBusy ? 'planning…' : 'build plan'}
                   </button>
@@ -539,7 +539,7 @@ export const DiscoveryModule: React.FC = () => {
                       { l: 'expected gain', v: plan.expected_hypervolume_gain, d: 4 },
                     ].map((s) => (
                       <StaggerItem key={s.l}>
-                        <div className="p-5 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                        <div className="p-5 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                           <div className="in-label">{s.l}</div>
                           <div
                             className="in-num text-2xl font-light mt-2"
@@ -564,7 +564,7 @@ export const DiscoveryModule: React.FC = () => {
                       </thead>
                       <tbody>
                         {plan.selected.map((e: any, i: number) => (
-                          <tr key={`${e.candidate_id}-${e.assay}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                          <tr key={`${e.candidate_id}-${e.assay}`} style={{ borderBottom: '1px solid var(--pp-rule-soft)' }}>
                             <td className="py-2.5 px-3 in-num" style={{ color: 'var(--in-faint)' }}>
                               {String(i + 1).padStart(2, '0')}
                             </td>
@@ -676,7 +676,7 @@ export const DiscoveryModule: React.FC = () => {
                         onClick={() => runGen(temperature)}
                         disabled={genBusy}
                         className="in-btn px-6 py-3 cursor-pointer disabled:opacity-40 whitespace-nowrap"
-                        style={{ background: 'var(--in-signal)', color: '#04161A', fontWeight: 600 }}
+                        style={{ background: 'var(--in-signal)', color: '#FFFFFF', fontWeight: 600 }}
                       >
                         {genBusy ? 'generating…' : 'generate 150'}
                       </button>
@@ -695,7 +695,7 @@ export const DiscoveryModule: React.FC = () => {
                           { l: 'diversity', v: gen.generation_metrics.internal_diversity },
                         ].map((s) => (
                           <StaggerItem key={s.l}>
-                            <div className="p-5 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                            <div className="p-5 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                               <div className="in-label">{s.l}</div>
                               <div className="in-num text-2xl font-light mt-2">
                                 {s.v == null ? '—' : <CountUp value={Number(s.v)} decimals={3} />}
@@ -716,7 +716,7 @@ export const DiscoveryModule: React.FC = () => {
                           </thead>
                           <tbody>
                             {gen.top_candidates.map((c: any) => (
-                              <tr key={c.smiles} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                              <tr key={c.smiles} style={{ borderBottom: '1px solid var(--pp-rule-soft)' }}>
                                 <td className="py-2.5 px-3 in-num max-w-[240px] truncate" style={{ color: 'var(--in-text)' }}>
                                   {c.smiles}
                                 </td>

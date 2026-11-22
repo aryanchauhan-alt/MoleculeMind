@@ -20,7 +20,7 @@ import {
   Stagger,
   StaggerItem,
 } from './primitives';
-import { parseMolBlock, useScene } from './SceneCanvas';
+import { MoleculeFigure, parseMolBlock, useScene } from './SceneCanvas';
 
 const PRESETS = [
   { name: 'Aspirin', smiles: 'CC(=O)Oc1ccccc1C(=O)O' },
@@ -122,7 +122,7 @@ export const AnalyzerModule: React.FC<Props> = ({ onSendToPrediction }) => {
               onClick={() => analyse()}
               disabled={loading}
               className="in-btn px-7 py-4 w-full sm:w-auto cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
-              style={{ background: 'var(--in-signal)', color: '#04161A', fontWeight: 600 }}
+              style={{ background: 'var(--in-signal)', color: '#FFFFFF', fontWeight: 600 }}
             >
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
               {loading ? 'reading' : 'analyse'}
@@ -142,7 +142,7 @@ export const AnalyzerModule: React.FC<Props> = ({ onSendToPrediction }) => {
               style={{
                 border: '1px solid var(--in-line)',
                 color: 'var(--in-dim)',
-                background: 'rgba(0,0,0,0.3)',
+                background: 'var(--pp-sunken)',
               }}
             >
               {p.name}
@@ -160,7 +160,7 @@ export const AnalyzerModule: React.FC<Props> = ({ onSendToPrediction }) => {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: DUR.fast, ease: EASE }}
             className="in-panel p-5 mb-8 flex gap-3 items-start"
-            style={{ borderColor: 'rgba(240,113,91,0.25)' }}
+            style={{ borderColor: 'rgba(179,38,30,0.3)' }}
           >
             <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--in-alarm)' }} />
             <div>
@@ -255,11 +255,11 @@ export const AnalyzerModule: React.FC<Props> = ({ onSendToPrediction }) => {
                       className="in-btn px-2.5 py-1 shrink-0"
                       style={{
                         background: rule.passed
-                          ? 'rgba(76,224,224,0.1)'
-                          : 'rgba(240,179,91,0.1)',
+                          ? 'var(--pp-accent-wash)'
+                          : 'var(--pp-caution-wash)',
                         color: rule.passed ? 'var(--in-signal)' : 'var(--in-caution)',
                         border: `1px solid ${
-                          rule.passed ? 'rgba(76,224,224,0.22)' : 'rgba(240,179,91,0.22)'
+                          rule.passed ? 'rgba(43,43,224,0.2)' : 'rgba(180,83,15,0.25)'
                         }`,
                       }}
                     >
@@ -273,18 +273,26 @@ export const AnalyzerModule: React.FC<Props> = ({ onSendToPrediction }) => {
                 </div>
               ))}
 
-              {/* 2D structure sits beside the rules; the 3D is on the shared canvas. */}
+              {/* Both representations as figures, side by side. */}
               <div className="in-panel p-6 flex flex-col">
                 <div className="in-label mb-3">2D structure</div>
                 <div
-                  className="flex-1 flex items-center justify-center rounded-xl overflow-hidden"
-                  style={{ background: 'rgba(0,0,0,0.25)', minHeight: 150 }}
+                  className="pp-well flex-1 flex items-center justify-center overflow-hidden"
+                  style={{ minHeight: 150 }}
                   dangerouslySetInnerHTML={{ __html: result.svg_2d }}
                 />
-                <div className="in-num text-[10px] mt-3 truncate" style={{ color: 'var(--in-faint)' }}>
+                <div className="in-num text-[10px] mt-3 truncate" style={{ color: 'var(--pp-faint)' }}>
                   {result.smiles}
                 </div>
               </div>
+            </div>
+          </Rise>
+
+          {/* --- 3D figure ------------------------------------------------- */}
+          <Rise delay={0.35}>
+            <div className="in-panel p-6 mt-3">
+              <div className="in-label mb-3">3D conformer</div>
+              <MoleculeFigure height={320} caption="ETKDGv3 embedding, MMFF94 optimised · computed, not measured" />
             </div>
           </Rise>
 

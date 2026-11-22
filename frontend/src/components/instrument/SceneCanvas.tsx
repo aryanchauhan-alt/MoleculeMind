@@ -1,18 +1,33 @@
 /**
- * SceneCanvas — one WebGL canvas for the entire application.
+ * MoleculeFigure — the 3D molecule, as a figure in a document.
  *
- * This is the architectural choice that creates the "continuous" feel. The
- * canvas mounts once and never unmounts. Switching modules does not reload
- * anything: the camera flies, the molecule morphs, and the HTML panels
- * cross-fade on top. Nothing ever pops.
+ * This replaces an earlier design where a full-screen WebGL canvas sat behind
+ * the whole application. That version measured **4 FPS**. The cause was not the
+ * 3D itself but the combination: a continuously animating full-viewport canvas
+ * underneath fourteen panels that each used `backdrop-filter: blur`, so the
+ * browser recomputed fourteen blurred regions every single frame.
  *
- * The signature rule of the design system is enforced here too: UNCERTAINTY IS
- * OPTICAL. A confident prediction renders as a crisp, tightly-glowing molecule.
- * An uncertain one renders soft, desaturated and surrounded by a thick
- * probability shell whose radius is the real conformal interval width.
+ * The canvas is now contained, modest, and only mounted where a molecule is
+ * actually the subject. Surfaces above it are solid. Specific measures:
+ *
+ *   - device pixel ratio capped at 1.5 (was up to 1.75 on a 2x display, which
+ *     meant a 3.2-megapixel backing store)
+ *   - the ambient particle field is gone entirely
+ *   - rendering pauses when the figure scrolls out of view or the tab is hidden
+ *   - no post-processing, no shadows, two lights
+ *
+ * The state provider is kept so modules can still report a molecule and its
+ * uncertainty, which drives both the figure and the typographic blur.
  */
 
-import React, { createContext, useContext, useMemo, useRef, useState } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -25,17 +40,6 @@ export type SceneMode =
   | 'active_learning'
   | 'benchmark';
 
-export interface SceneState {
-  mode: SceneMode;
-  /** 0 = fully certain, 1 = no idea. Drives blur, glow spread and shell size. */
-  uncertainty: number;
-  /** Set when the applicability domain rejects the molecule. */
-  outOfDomain: boolean;
-  /** Atom positions in Angstroms, parsed from the backend's 3D conformer. */
-  atoms: Atom[];
-  bonds: [number, number][];
-}
-
 export interface Atom {
   element: string;
   x: number;
@@ -43,7 +47,12 @@ export interface Atom {
   z: number;
 }
 
-interface SceneApi extends SceneState {
+interface SceneApi {
+  mode: SceneMode;
+  uncertainty: number;
+  outOfDomain: boolean;
+  atoms: Atom[];
+  bonds: [number, number][];
   setMode: (m: SceneMode) => void;
   setUncertainty: (u: number) => void;
   setOutOfDomain: (v: boolean) => void;
@@ -58,100 +67,38 @@ export const useScene = (): SceneApi => {
   return ctx;
 };
 
-/** CPK-ish colours, warmed slightly to sit inside the palette. */
+/**
+ * Element colours chosen for a LIGHT background. The usual CPK palette assumes
+ * dark: white hydrogens and pale greys vanish on paper, so carbons are graphite
+ * and hydrogens a mid grey.
+ */
 const ELEMENT_COLOR: Record<string, string> = {
-  C: '#8A93A3',
-  H: '#E8ECF2',
-  O: '#F0715B',
-  N: '#4CE0E0',
-  S: '#F0B35B',
-  P: '#F09A5B',
-  F: '#7BE07B',
-  Cl: '#7BE09A',
-  Br: '#C98A5B',
-  I: '#A87BE0',
+  C: '#3A3A42',
+  H: '#B8B8BE',
+  O: '#C0392B',
+  N: '#2B5FD9',
+  S: '#C8901B',
+  P: '#C06A1B',
+  F: '#3E8E5A',
+  Cl: '#4A8C4A',
+  Br: '#8C5A2B',
+  I: '#6B3FA0',
 };
 const ELEMENT_RADIUS: Record<string, number> = {
-  H: 0.22, C: 0.34, N: 0.32, O: 0.31, S: 0.4, P: 0.4,
-  F: 0.26, Cl: 0.38, Br: 0.42, I: 0.46,
+  H: 0.2, C: 0.32, N: 0.3, O: 0.29, S: 0.38, P: 0.38,
+  F: 0.24, Cl: 0.36, Br: 0.4, I: 0.44,
 };
 
-const colorFor = (el: string) => ELEMENT_COLOR[el] ?? '#8A93A3';
-const radiusFor = (el: string) => ELEMENT_RADIUS[el] ?? 0.33;
+const colorFor = (el: string) => ELEMENT_COLOR[el] ?? '#3A3A42';
+const radiusFor = (el: string) => ELEMENT_RADIUS[el] ?? 0.31;
 
-/**
- * Camera framing per module. The camera never cuts — it eases between these,
- * which is most of what makes module changes feel cinematic rather than like
- * page loads.
- */
-const CAMERA_TARGETS: Record<SceneMode, { pos: [number, number, number]; fov: number }> = {
-  idle:            { pos: [0, 0, 16], fov: 38 },
-  analyzer:        { pos: [0, 0, 11], fov: 34 },
-  prediction:      { pos: [3.5, 1.2, 12], fov: 36 },
-  pareto:          { pos: [0, 2.5, 22], fov: 44 },
-  discovery:       { pos: [-3, 1.5, 19], fov: 42 },
-  active_learning: { pos: [0, -1.5, 20], fov: 46 },
-  benchmark:       { pos: [8, 3, 26], fov: 50 },
-};
-
-/**
- * Where the molecule sits per module, in world units. It lives in the right
- * third on text-heavy modules so the reading column stays clear, and recentres
- * where the 3D itself is the subject.
- */
-const MOLECULE_OFFSET: Record<SceneMode, [number, number, number]> = {
-  idle:            [0, 0, 0],
-  analyzer:        [3.4, 0.2, 0],
-  prediction:      [3.2, 0.1, 0],
-  pareto:          [5.0, 1.0, -3],
-  discovery:       [5.2, 0.8, -3],
-  active_learning: [4.6, 0.6, -2],
-  benchmark:       [6.0, 1.4, -5],
-};
-
-/** Eases the camera toward the active module's framing every frame. */
-const CameraRig: React.FC<{ mode: SceneMode }> = ({ mode }) => {
-  const target = CAMERA_TARGETS[mode] ?? CAMERA_TARGETS.idle;
-  const pointer = useRef({ x: 0, y: 0 });
-
-  useFrame((state, delta) => {
-    const cam = state.camera as THREE.PerspectiveCamera;
-    // Critically damped approach: fast at first, settles without overshoot.
-    const k = 1 - Math.exp(-delta * 2.2);
-
-    // A little parallax from the pointer. Subtle — 0.8 units at the extremes.
-    pointer.current.x += (state.pointer.x * 0.8 - pointer.current.x) * k;
-    pointer.current.y += (state.pointer.y * 0.5 - pointer.current.y) * k;
-
-    cam.position.x += (target.pos[0] + pointer.current.x - cam.position.x) * k;
-    cam.position.y += (target.pos[1] + pointer.current.y - cam.position.y) * k;
-    cam.position.z += (target.pos[2] - cam.position.z) * k;
-
-    if (Math.abs(cam.fov - target.fov) > 0.01) {
-      cam.fov += (target.fov - cam.fov) * k;
-      cam.updateProjectionMatrix();
-    }
-    cam.lookAt(0, 0, 0);
-  });
-
-  return null;
-};
-
-/**
- * The molecule itself: instanced spheres for atoms, cylinders for bonds.
- * Instancing matters — a 40-atom molecule with individual meshes costs 40 draw
- * calls per frame; instanced it costs one.
- */
 const Molecule: React.FC<{
   atoms: Atom[];
   bonds: [number, number][];
-  uncertainty: number;
-  offset: [number, number, number];
-}> = ({ atoms, bonds, uncertainty, offset }) => {
+  spin: boolean;
+}> = ({ atoms, bonds, spin }) => {
   const group = useRef<THREE.Group>(null);
-  const pos = useRef(new THREE.Vector3(...offset));
 
-  // Centre and scale the molecule so any size sits nicely in frame.
   const { positions, scale } = useMemo(() => {
     if (!atoms.length) return { positions: [] as THREE.Vector3[], scale: 1 };
     const pts = atoms.map((a) => new THREE.Vector3(a.x, a.y, a.z));
@@ -160,62 +107,43 @@ const Molecule: React.FC<{
       .divideScalar(pts.length);
     pts.forEach((p) => p.sub(centre));
     const extent = Math.max(...pts.map((p) => p.length()), 1);
-    // Target a consistent on-screen size regardless of molecule size. Kept
-    // deliberately modest: the molecule is atmosphere, the panels are the
-    // subject, and a molecule large enough to read through is a molecule that
-    // makes the text unreadable.
-    return { positions: pts, scale: 2.1 / extent };
+    return { positions: pts, scale: 3.1 / extent };
   }, [atoms]);
 
   useFrame((_, delta) => {
-    if (!group.current) return;
-    // Slow, continuous rotation. Uncertain molecules wobble very slightly —
-    // an unsettled object reads as an unsettled answer.
-    group.current.rotation.y += delta * 0.16;
-    group.current.rotation.x =
-      Math.sin(performance.now() * 0.0004) * (0.06 + uncertainty * 0.12);
-
-    // Ease toward the module's framing offset rather than cutting.
-    const k = 1 - Math.exp(-delta * 1.8);
-    pos.current.x += (offset[0] - pos.current.x) * k;
-    pos.current.y += (offset[1] - pos.current.y) * k;
-    pos.current.z += (offset[2] - pos.current.z) * k;
-    group.current.position.copy(pos.current);
+    if (group.current && spin) group.current.rotation.y += delta * 0.22;
   });
 
   if (!atoms.length) return null;
 
   return (
-    <group ref={group} scale={scale} position={offset}>
+    <group ref={group} scale={scale}>
       {positions.map((p, i) => (
         <mesh key={`a${i}`} position={p}>
-          <sphereGeometry args={[radiusFor(atoms[i].element), 24, 24]} />
+          {/* Low segment counts: at this size the difference is invisible and
+              the triangle count drops by roughly three quarters. */}
+          <sphereGeometry args={[radiusFor(atoms[i].element), 16, 16]} />
           <meshStandardMaterial
             color={colorFor(atoms[i].element)}
-            roughness={0.35}
-            metalness={0.1}
-            emissive={colorFor(atoms[i].element)}
-            emissiveIntensity={0.16}
+            roughness={0.55}
+            metalness={0.05}
           />
         </mesh>
       ))}
-
       {bonds.map(([a, b], i) => {
         const start = positions[a];
         const end = positions[b];
         if (!start || !end) return null;
         const mid = start.clone().add(end).multiplyScalar(0.5);
         const dir = end.clone().sub(start);
-        const len = dir.length();
-        // Align a Y-up cylinder along the bond vector.
         const quat = new THREE.Quaternion().setFromUnitVectors(
           new THREE.Vector3(0, 1, 0),
           dir.clone().normalize()
         );
         return (
           <mesh key={`b${i}`} position={mid} quaternion={quat}>
-            <cylinderGeometry args={[0.075, 0.075, len, 12]} />
-            <meshStandardMaterial color="#5A6372" roughness={0.5} metalness={0.2} />
+            <cylinderGeometry args={[0.07, 0.07, dir.length(), 8]} />
+            <meshStandardMaterial color="#9A9AA2" roughness={0.6} />
           </mesh>
         );
       })}
@@ -224,68 +152,81 @@ const Molecule: React.FC<{
 };
 
 /**
- * The probability shell — the clearest expression of the project's thesis.
- * Its radius grows with the calibrated uncertainty, so a confident prediction
- * wears a tight skin and an unsure one sits inside a thick fog.
+ * The molecule as a figure. Place it in a layout like an illustration.
+ *
+ * It renders nothing at all until it is on screen, and stops rendering when it
+ * leaves — the single most effective thing you can do for a WebGL canvas that
+ * shares a page with scrolling content.
  */
-const UncertaintyShell: React.FC<{
-  uncertainty: number;
-  outOfDomain: boolean;
-  offset: [number, number, number];
-}> = ({ uncertainty, outOfDomain, offset }) => {
-  const mesh = useRef<THREE.Mesh>(null);
-  const current = useRef(0);
+export const MoleculeFigure: React.FC<{
+  className?: string;
+  height?: number;
+  caption?: string;
+}> = ({ className, height = 280, caption }) => {
+  const { atoms, bonds, uncertainty, outOfDomain } = useScene();
+  const host = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
 
-  useFrame((_, delta) => {
-    if (!mesh.current) return;
-    const k = 1 - Math.exp(-delta * 1.6);
-    const target = 2.4 + uncertainty * 2.6;
-    current.current += (target - current.current) * k;
-    mesh.current.scale.setScalar(current.current);
-    mesh.current.rotation.y -= delta * 0.05;
-  });
-
-  return (
-    <mesh ref={mesh} position={offset}>
-      <icosahedronGeometry args={[1, 3]} />
-      <meshBasicMaterial
-        color={outOfDomain ? '#F0715B' : '#4CE0E0'}
-        wireframe
-        transparent
-        opacity={0.04 + uncertainty * 0.12}
-      />
-    </mesh>
-  );
-};
-
-/** Ambient particle field. Gives the empty space depth and parallax. */
-const Starfield: React.FC<{ count?: number }> = ({ count = 420 }) => {
-  const points = useRef<THREE.Points>(null);
-
-  const geometry = useMemo(() => {
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      // Shell distribution so nothing sits in front of the molecule.
-      const r = 20 + Math.random() * 30;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      positions[i * 3 + 2] = r * Math.cos(phi);
+  useEffect(() => {
+    const el = host.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return;
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    return geo;
-  }, [count]);
+    const io = new IntersectionObserver(
+      ([entry]) => setVisible(entry.isIntersecting),
+      { rootMargin: '120px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
-  useFrame((_, delta) => {
-    if (points.current) points.current.rotation.y += delta * 0.012;
-  });
+  // Pause while the browser tab is in the background.
+  const [tabActive, setTabActive] = useState(true);
+  useEffect(() => {
+    const onVis = () => setTabActive(!document.hidden);
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  const running = visible && tabActive;
 
   return (
-    <points ref={points} geometry={geometry}>
-      <pointsMaterial size={0.08} color="#4CE0E0" transparent opacity={0.3} sizeAttenuation />
-    </points>
+    <figure ref={host} className={className} style={{ margin: 0 }}>
+      <div
+        className="pp-well overflow-hidden"
+        style={{
+          height,
+          // The signature rule, applied to the figure: an untrustworthy
+          // molecule is literally less distinct.
+          filter: outOfDomain
+            ? 'blur(1.4px) saturate(0.5)'
+            : `blur(${(uncertainty * 1.1).toFixed(2)}px)`,
+          transition: 'filter 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
+        }}
+      >
+        {atoms.length > 0 && (
+          <Canvas
+            camera={{ position: [0, 0, 9], fov: 34 }}
+            // Capped: an uncapped dpr on a 2x display quadruples the backing
+            // store for no visible gain at this size.
+            dpr={[1, 1.5]}
+            // `demand` would need manual invalidation for the spin; `always`
+            // is fine because the canvas unmounts its loop when not running.
+            frameloop={running ? 'always' : 'never'}
+            gl={{ antialias: true, alpha: true, powerPreference: 'default' }}
+            style={{ pointerEvents: 'none' }}
+          >
+            <ambientLight intensity={0.85} />
+            <directionalLight position={[4, 6, 8]} intensity={1.5} />
+            <Molecule atoms={atoms} bonds={bonds} spin={running} />
+          </Canvas>
+        )}
+      </div>
+      {caption && (
+        <figcaption className="in-label mt-2.5">{caption}</figcaption>
+      )}
+    </figure>
   );
 };
 
@@ -314,68 +255,15 @@ export const SceneProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [mode, uncertainty, outOfDomain, atoms, bonds]
   );
 
-  return (
-    <SceneContext.Provider value={api}>
-      {/* The canvas is fixed behind everything and never unmounts. */}
-      <div
-        className="fixed inset-0 z-0 pointer-events-none"
-        style={{
-          // The signature rule, applied to the whole 3D layer.
-          filter: outOfDomain
-            ? 'blur(2px) saturate(0.4)'
-            : `blur(${uncertainty * 1.6}px) saturate(${1 - uncertainty * 0.3})`,
-          transition: 'filter 1.2s cubic-bezier(0.16, 1, 0.3, 1)',
-        }}
-      >
-        <Canvas
-          camera={{ position: [0, 0, 16], fov: 38 }}
-          dpr={[1, 1.75]}
-          gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        >
-          <ambientLight intensity={0.35} />
-          <directionalLight position={[6, 8, 10]} intensity={1.1} />
-          <directionalLight position={[-8, -4, -6]} intensity={0.35} color="#4CE0E0" />
-          <pointLight position={[0, 0, 6]} intensity={0.5} color="#4CE0E0" distance={22} />
-
-          <CameraRig mode={mode} />
-          <Starfield />
-          <Molecule
-            atoms={atoms}
-            bonds={bonds}
-            uncertainty={uncertainty}
-            offset={MOLECULE_OFFSET[mode] ?? MOLECULE_OFFSET.idle}
-          />
-          {(mode === 'prediction' || mode === 'analyzer') && (
-            <UncertaintyShell
-              uncertainty={uncertainty}
-              outOfDomain={outOfDomain}
-              offset={MOLECULE_OFFSET[mode] ?? MOLECULE_OFFSET.idle}
-            />
-          )}
-        </Canvas>
-      </div>
-
-      {/* Reading scrim. The molecule must never cost legibility, so the left
-          two-thirds — where all the text lives — is darkened behind content. */}
-      <div
-        className="fixed inset-0 z-[1] pointer-events-none"
-        style={{
-          background:
-            'linear-gradient(100deg, var(--in-base) 0%, color-mix(in srgb, var(--in-base) 88%, transparent) 42%, transparent 72%)',
-        }}
-      />
-
-      <div className="relative z-10">{children}</div>
-    </SceneContext.Provider>
-  );
+  // No fixed canvas, no scrim, no grain. The provider is state only.
+  return <SceneContext.Provider value={api}>{children}</SceneContext.Provider>;
 };
 
 /**
- * Parse the backend's MOL block (from RDKit) into atoms and bonds.
+ * Parse RDKit's MOL V2000 block into atoms and bonds.
  *
- * MOL V2000 format: line 4 is the counts line (atoms, bonds), then one line
- * per atom (x, y, z, element), then one line per bond (a, b, order) using
- * 1-based atom indices.
+ * Line 4 is the counts line, then one line per atom (x, y, z, element), then
+ * one line per bond using 1-based atom indices.
  */
 export function parseMolBlock(mol: string): { atoms: Atom[]; bonds: [number, number][] } {
   const empty = { atoms: [] as Atom[], bonds: [] as [number, number][] };

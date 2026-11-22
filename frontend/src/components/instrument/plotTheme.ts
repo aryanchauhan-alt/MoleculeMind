@@ -7,21 +7,21 @@
  */
 
 export const PLOT_COLORS = {
-  base: '#06070A',
-  surface: 'rgba(12, 13, 20, 0.6)',
-  line: 'rgba(255, 255, 255, 0.06)',
-  text: '#E8ECF2',
-  dim: '#8A93A3',
-  faint: '#555F70',
-  signal: '#4CE0E0',
-  caution: '#F0B35B',
-  alarm: '#F0715B',
+  base: '#F4F3EF',
+  surface: '#FFFFFF',
+  line: 'rgba(23, 23, 26, 0.09)',
+  text: '#17171A',
+  dim: '#6E6E76',
+  faint: '#9B9BA2',
+  signal: '#2B2BE0',
+  caution: '#B4530F',
+  alarm: '#B3261E',
 } as const;
 
 const axis = (title?: string) => {
   const a: Record<string, unknown> = {
     gridcolor: PLOT_COLORS.line,
-    zerolinecolor: 'rgba(255,255,255,0.1)',
+    zerolinecolor: 'rgba(23,23,26,0.16)',
     color: PLOT_COLORS.dim,
     tickfont: { size: 10, family: 'JetBrains Mono, monospace', color: PLOT_COLORS.faint },
     linecolor: PLOT_COLORS.line,
@@ -37,7 +37,7 @@ export const plotLayout = (
 ): Record<string, unknown> => {
   const layout: Record<string, unknown> = {
     paper_bgcolor: 'rgba(0,0,0,0)',
-    plot_bgcolor: 'rgba(0,0,0,0.25)',
+    plot_bgcolor: '#FFFFFF',
     font: { family: 'JetBrains Mono, monospace', size: 11, color: PLOT_COLORS.text },
     margin: { l: 62, r: 24, t: 18, b: 52 },
     autosize: true,
@@ -51,8 +51,8 @@ export const plotLayout = (
       bgcolor: 'rgba(0,0,0,0)',
     },
     hoverlabel: {
-      bgcolor: '#0C0D14',
-      bordercolor: PLOT_COLORS.line,
+      bgcolor: '#FFFFFF',
+      bordercolor: 'rgba(23,23,26,0.18)',
       font: { family: 'JetBrains Mono, monospace', size: 11, color: PLOT_COLORS.text },
     },
   };
@@ -60,9 +60,9 @@ export const plotLayout = (
   // Same reasoning: omit these keys entirely rather than setting them undefined.
   if (opts.z) {
     layout.scene = {
-      xaxis: { ...axis(opts.x), backgroundcolor: 'rgba(0,0,0,0.25)' },
-      yaxis: { ...axis(opts.y), backgroundcolor: 'rgba(0,0,0,0.25)' },
-      zaxis: { ...axis(opts.z), backgroundcolor: 'rgba(0,0,0,0.25)' },
+      xaxis: { ...axis(opts.x), backgroundcolor: '#FFFFFF' },
+      yaxis: { ...axis(opts.y), backgroundcolor: '#FFFFFF' },
+      zaxis: { ...axis(opts.z), backgroundcolor: '#FFFFFF' },
     };
   }
   if (opts.height) layout.height = opts.height;

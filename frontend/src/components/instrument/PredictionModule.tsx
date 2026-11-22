@@ -25,7 +25,7 @@ import {
   StaggerItem,
   Uncertain,
 } from './primitives';
-import { parseMolBlock, useScene } from './SceneCanvas';
+import { MoleculeFigure, parseMolBlock, useScene } from './SceneCanvas';
 
 const PRESETS = [
   { name: 'Aspirin', smiles: 'CC(=O)Oc1ccccc1C(=O)O' },
@@ -114,9 +114,9 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
         <div className="in-rule mt-8 max-w-md" />
         <Rise delay={0.4}>
           <p className="mt-5 text-sm max-w-xl leading-relaxed" style={{ color: 'var(--in-dim)' }}>
-            Every prediction arrives with a calibrated interval. The molecule behind this
-            panel blurs in proportion to that uncertainty — when the models are unsure, the
-            interface is literally harder to read.
+            Every prediction arrives with a calibrated interval. The figure and the number
+            below blur in proportion to that uncertainty — when the models are unsure, the
+            result is literally harder to read.
           </p>
         </Rise>
       </div>
@@ -138,7 +138,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
               onClick={() => predict()}
               disabled={loading}
               className="in-btn px-7 py-4 w-full sm:w-auto cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
-              style={{ background: 'var(--in-signal)', color: '#04161A', fontWeight: 600 }}
+              style={{ background: 'var(--in-signal)', color: '#FFFFFF', fontWeight: 600 }}
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {loading ? 'computing' : 'predict'}
@@ -157,7 +157,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
               style={{
                 border: '1px solid var(--in-line)',
                 color: 'var(--in-dim)',
-                background: 'rgba(0,0,0,0.3)',
+                background: 'var(--pp-sunken)',
               }}
             >
               {p.name}
@@ -173,7 +173,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             className="in-panel p-5 mb-8 flex gap-3"
-            style={{ borderColor: 'rgba(240,113,91,0.25)' }}
+            style={{ borderColor: 'rgba(179,38,30,0.3)' }}
           >
             <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--in-alarm)' }} />
             <p className="text-xs" style={{ color: 'var(--in-dim)' }}>{error}</p>
@@ -200,6 +200,9 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
                   <div className="in-label mt-3">{sol.classification} · {sol.unit}</div>
                 </div>
 
+                {/* The molecule, blurred by the same uncertainty as the number */}
+                <MoleculeFigure height={200} className="w-full lg:w-[280px] shrink-0" />
+
                 {/* Confidence selector */}
                 <div className="flex flex-col gap-3">
                   <div className="flex gap-1.5">
@@ -209,8 +212,8 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
                         onClick={() => setLevel(l)}
                         className="in-btn px-3.5 py-1.5 cursor-pointer"
                         style={{
-                          background: l === level ? 'var(--in-signal)' : 'rgba(0,0,0,0.3)',
-                          color: l === level ? '#04161A' : 'var(--in-dim)',
+                          background: l === level ? 'var(--in-signal)' : 'var(--pp-sunken)',
+                          color: l === level ? '#FFFFFF' : 'var(--in-dim)',
                           border: `1px solid ${l === level ? 'var(--in-signal)' : 'var(--in-line)'}`,
                           fontWeight: l === level ? 600 : 400,
                         }}
@@ -297,7 +300,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
                     { l: 'nearest analogue', v: null, t: null },
                   ].map((m) => (
                     <StaggerItem key={m.l}>
-                      <div className="p-4 rounded-xl h-full" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                      <div className="p-4 rounded-xl h-full" style={{ background: 'var(--pp-sunken)' }}>
                         <div className="in-label">{m.l}</div>
                         {m.v !== null && m.v !== undefined ? (
                           <>
@@ -345,7 +348,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
                         <span
                           className="in-btn px-2 py-0.5"
                           style={{
-                            background: p.provenance === 'model' ? 'var(--in-signal-dim)' : 'rgba(255,255,255,0.04)',
+                            background: p.provenance === 'model' ? 'var(--in-signal-dim)' : 'var(--pp-sunken)',
                             color: p.provenance === 'model' ? 'var(--in-signal)' : 'var(--in-dim)',
                             border: '1px solid var(--in-line)',
                             fontSize: 9,
@@ -370,7 +373,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
                   ) : (
                     <div
                       className="p-5 h-full rounded-[20px]"
-                      style={{ border: '1px dashed var(--in-line-strong)', background: 'rgba(0,0,0,0.2)' }}
+                      style={{ border: '1px dashed var(--in-line-strong)', background: 'var(--pp-sunken)' }}
                     >
                       <div className="flex items-start justify-between">
                         <div className="in-label">{p.property_name}</div>
@@ -429,8 +432,8 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
                       key={c.l}
                       className="p-5 rounded-xl"
                       style={{
-                        background: 'rgba(0,0,0,0.3)',
-                        border: `1px solid ${c.warn ? 'rgba(240,179,91,0.25)' : 'var(--in-line)'}`,
+                        background: 'var(--pp-sunken)',
+                        border: `1px solid ${c.warn ? 'rgba(180,83,15,0.25)' : 'var(--in-line)'}`,
                       }}
                     >
                       <div className="in-label">{c.l}</div>
@@ -453,7 +456,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
 
                 {/* Variance decomposition */}
                 <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div className="p-4 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)' }}>
+                  <div className="p-4 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                     <div className="in-label">aleatoric variance</div>
                     <div className="in-num text-sm mt-1.5">
                       {result.dmpnn.solubility_logs.aleatoric_variance}
@@ -462,7 +465,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
                       </span>
                     </div>
                   </div>
-                  <div className="p-4 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)' }}>
+                  <div className="p-4 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                     <div className="in-label">epistemic variance</div>
                     <div className="in-num text-sm mt-1.5">
                       {result.dmpnn.solubility_logs.epistemic_variance}
@@ -475,7 +478,7 @@ export const PredictionModule: React.FC<Props> = ({ initialSmiles }) => {
 
                 {/* Conformal prediction sets */}
                 {result.dmpnn.toxicity?.conformal_sets && (
-                  <div className="mt-3 p-5 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)' }}>
+                  <div className="mt-3 p-5 rounded-xl" style={{ background: 'var(--pp-sunken)' }}>
                     <div className="in-label mb-3">conformal prediction set — toxicity, 90%</div>
                     <div className="flex flex-wrap gap-2">
                       {(['lac', 'aps_randomized'] as const).map((m) => {

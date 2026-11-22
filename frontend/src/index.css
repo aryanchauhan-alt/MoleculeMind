@@ -44,56 +44,18 @@
   background: #33394e;
 }
 
-/* Emotion Agency Editorial Glassmorphism */
-.agency-glass {
-  background: rgba(14, 16, 24, 0.55);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5);
-}
-
-.agency-glass-hover {
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.agency-glass-hover:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
-  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.65), 0 0 25px rgba(255, 255, 255, 0.04);
-}
-
-.agency-card {
-  background: rgba(12, 14, 20, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
 
 /* Refined Pill Navigation Dock */
 .agency-dock {
   background: rgba(10, 12, 18, 0.75);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
 }
 
 /* Atmospheric Ambient Lights (Diffused, non-grid) */
-.ambient-glow-cyan {
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, rgba(56, 189, 248, 0) 70%);
-}
 
-.ambient-glow-emerald {
-  background: radial-gradient(circle, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0) 70%);
-}
 
-.ambient-glow-violet {
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0) 70%);
-}
 
-.ambient-glow-silver {
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 70%);
-}
 
 /* Editorial Typography Styles */
 .editorial-title {
@@ -164,7 +126,6 @@
   color: #f1f5f9;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
-  backdrop-filter: blur(12px);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .btn-agency-secondary:hover {
@@ -174,153 +135,196 @@
 }
 
 /* ===================================================================
-   INSTRUMENT — design system
+   PAPER — design system
    -------------------------------------------------------------------
-   Concept: a research vessel's instrument panel. Dark, measured,
-   monospace numerals, one luminous object at the centre.
+   Light, editorial, typographic. A scientific document rather than a
+   sci-fi dashboard.
 
-   The signature rule: UNCERTAINTY IS RENDERED AS OPTICAL BLUR.
-   Confident output is crisp; uncertain output is soft, grainy and
-   desaturated. The project's thesis becomes the visual language.
+   Two problems had one shared cause. The previous dark theme ran at
+   4 FPS because fourteen panels used `backdrop-filter: blur` over a
+   continuously animating full-screen WebGL canvas, so the browser
+   re-blurred fourteen regions every frame. It also looked generic,
+   because near-black plus neon cyan plus glowing particles is the
+   default "AI product" costume.
+
+   This system has NO backdrop blur, NO grain overlay, NO particle
+   field and NO full-screen canvas. Surfaces are solid. The molecule
+   lives in a defined figure, like an illustration in a paper.
+
+   The signature rule survives, inverted to suit light: UNCERTAINTY IS
+   OPTICAL. Confident values are solid ink; uncertain ones soften
+   toward the page.
    =================================================================== */
 
 @layer base {
   :root {
-    /* --- surfaces -------------------------------------------------- */
-    --in-base:        #06070A;
-    --in-surface:     #0C0D14;
-    --in-raised:      #12141C;
-    --in-line:        rgba(255, 255, 255, 0.06);
-    --in-line-strong: rgba(255, 255, 255, 0.14);
+    /* --- paper and ink ------------------------------------------- */
+    --pp-paper:      #F4F3EF;   /* warm off-white, not clinical white */
+    --pp-raised:     #FFFFFF;   /* cards sit above the page */
+    --pp-sunken:     #EBEAE4;   /* wells, table stripes */
+    --pp-ink:        #17171A;
+    --pp-muted:      #6E6E76;
+    --pp-faint:      #9B9BA2;
+    --pp-rule:       rgba(23, 23, 26, 0.12);
+    --pp-rule-soft:  rgba(23, 23, 26, 0.07);
 
-    /* --- text ------------------------------------------------------ */
-    --in-text:        #E8ECF2;
-    --in-dim:         #8A93A3;
-    --in-faint:       #555F70;
+    /* --- one accent, used sparingly ------------------------------ */
+    --pp-accent:     #2B2BE0;   /* electric ink blue */
+    --pp-accent-wash:rgba(43, 43, 224, 0.07);
+    --pp-caution:    #B4530F;   /* rust, for warnings */
+    --pp-caution-wash: rgba(180, 83, 15, 0.08);
+    --pp-alarm:      #B3261E;
 
-    /* --- one accent, used with restraint -------------------------- */
-    --in-signal:      #4CE0E0;
-    --in-signal-dim:  rgba(76, 224, 224, 0.12);
-    --in-caution:     #F0B35B;
-    --in-alarm:       #F0715B;
+    /* --- motion: one curve, three tiers -------------------------- */
+    --pp-ease:       cubic-bezier(0.22, 1, 0.36, 1);
+    --pp-fast:       0.25s;
+    --pp-base:       0.45s;
+    --pp-slow:       0.75s;
 
-    /* --- motion: ONE curve, three tiers --------------------------- */
-    --in-ease:        cubic-bezier(0.16, 1, 0.3, 1);
-    --in-fast:        0.4s;
-    --in-base-dur:    0.7s;
-    --in-cine:        1.2s;
+    /* --- type ---------------------------------------------------- */
+    --pp-display: 'Space Grotesk', system-ui, sans-serif;
+    --pp-mono:    'JetBrains Mono', ui-monospace, monospace;
 
-    /* --- type ------------------------------------------------------ */
-    --in-display: 'Space Grotesk', system-ui, sans-serif;
-    --in-mono:    'JetBrains Mono', ui-monospace, monospace;
+    /* Legacy aliases so existing markup keeps resolving while the
+       modules are migrated. */
+    --in-base: var(--pp-paper);
+    --in-surface: var(--pp-raised);
+    --in-raised: var(--pp-raised);
+    --in-line: var(--pp-rule-soft);
+    --in-line-strong: var(--pp-rule);
+    --in-text: var(--pp-ink);
+    --in-dim: var(--pp-muted);
+    --in-faint: var(--pp-faint);
+    --in-signal: var(--pp-accent);
+    --in-signal-dim: var(--pp-accent-wash);
+    --in-caution: var(--pp-caution);
+    --in-alarm: var(--pp-alarm);
+    --in-ease: var(--pp-ease);
+    --in-fast: var(--pp-fast);
+    --in-base-dur: var(--pp-base);
+    --in-cine: var(--pp-slow);
+    --in-display: var(--pp-display);
+    --in-mono: var(--pp-mono);
   }
 
-  body {
-    background-color: var(--in-base);
-    color: var(--in-text);
+  html, body {
+    background-color: var(--pp-paper);
+    color: var(--pp-ink);
   }
+
+  ::selection { background: var(--pp-ink); color: var(--pp-paper); }
 }
 
-/* --- display type: tight tracking is what reads as "designed" ----- */
+/* --- type ---------------------------------------------------------- */
 .in-display {
-  font-family: var(--in-display);
-  letter-spacing: -0.03em;
+  font-family: var(--pp-display);
+  letter-spacing: -0.025em;
   font-weight: 600;
 }
-.in-display-xl { font-family: var(--in-display); letter-spacing: -0.04em; font-weight: 700; line-height: 0.92; }
-
-/* --- every number is monospace: this is what makes it an instrument */
+.in-display-xl {
+  font-family: var(--pp-display);
+  letter-spacing: -0.045em;
+  font-weight: 700;
+  line-height: 0.9;
+}
 .in-num {
-  font-family: var(--in-mono);
+  font-family: var(--pp-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 .in-label {
-  font-family: var(--in-mono);
+  font-family: var(--pp-mono);
   font-size: 10px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--in-faint);
+  color: var(--pp-faint);
 }
 
-/* --- panels ------------------------------------------------------- */
+/* --- surfaces: SOLID. No backdrop-filter anywhere. ----------------- */
 .in-panel {
-  background: color-mix(in srgb, var(--in-surface) 82%, transparent);
-  backdrop-filter: blur(24px) saturate(1.1);
-  -webkit-backdrop-filter: blur(24px) saturate(1.1);
-  border: 1px solid var(--in-line);
-  border-radius: 20px;
+  background: var(--pp-raised);
+  border: 1px solid var(--pp-rule-soft);
+  border-radius: 14px;
 }
-.in-panel-hover { transition: border-color var(--in-fast) var(--in-ease), transform var(--in-fast) var(--in-ease); }
-.in-panel-hover:hover { border-color: var(--in-line-strong); transform: translateY(-2px); }
+.in-panel-hover {
+  transition: border-color var(--pp-fast) var(--pp-ease),
+              box-shadow var(--pp-fast) var(--pp-ease);
+}
+.in-panel-hover:hover {
+  border-color: var(--pp-rule);
+  box-shadow: 0 2px 14px rgba(23, 23, 26, 0.05);
+}
 
-/* --- THE SIGNATURE: certainty as optical sharpness ---------------- */
-/* Applied to any value whose uncertainty we know. `--u` is 0 (certain)
-   to 1 (entirely unsure) and is set inline from the real sigma.      */
+/* A well: recessed area inside a panel, replacing the old dark boxes. */
+.pp-well {
+  background: var(--pp-sunken);
+  border-radius: 10px;
+}
+
+/* --- the signature, inverted for paper ----------------------------- */
+/* `--u` runs 0 (certain) to 1 (no idea) and is set inline from sigma.
+   On light, uncertainty reads as fading toward the page rather than
+   glowing. Blur is kept small: it must stay legible.                  */
 .in-uncertain {
   --u: 0;
-  filter: blur(calc(var(--u) * 3.2px)) saturate(calc(1 - var(--u) * 0.55));
-  opacity: calc(1 - var(--u) * 0.3);
-  transition: filter var(--in-base-dur) var(--in-ease),
-              opacity var(--in-base-dur) var(--in-ease);
+  filter: blur(calc(var(--u) * 2.2px));
+  opacity: calc(1 - var(--u) * 0.42);
+  transition: filter var(--pp-base) var(--pp-ease),
+              opacity var(--pp-base) var(--pp-ease);
 }
-/* Out-of-domain goes further: hazy, cold, pushed away */
 .in-out-of-domain {
-  filter: blur(2.4px) saturate(0.35) brightness(0.85);
-  opacity: 0.62;
+  filter: blur(1.6px);
+  opacity: 0.5;
 }
 
-/* --- fine grain: the cheapest way to add filmic depth ------------- */
-.in-grain::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 60;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
-  mix-blend-mode: overlay;
-}
-
-/* --- measurement grid: reinforces "instrument" -------------------- */
-.in-grid-bg {
-  background-image:
-    linear-gradient(var(--in-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--in-line) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black, transparent 75%);
-}
-
-/* --- hairline rule with a signal tick ----------------------------- */
-.in-rule { height: 1px; background: var(--in-line); position: relative; }
+/* --- hairline rule with an accent tick ----------------------------- */
+.in-rule { height: 1px; background: var(--pp-rule); position: relative; }
 .in-rule::before {
-  content: ''; position: absolute; left: 0; top: 0; width: 32px; height: 1px;
-  background: var(--in-signal);
+  content: ''; position: absolute; left: 0; top: 0; width: 40px; height: 1px;
+  background: var(--pp-accent);
 }
 
-/* --- focus states that match the system -------------------------- */
+/* --- inputs -------------------------------------------------------- */
 .in-input {
-  font-family: var(--in-mono);
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid var(--in-line);
-  border-radius: 14px;
-  transition: border-color var(--in-fast) var(--in-ease), box-shadow var(--in-fast) var(--in-ease);
+  font-family: var(--pp-mono);
+  background: var(--pp-raised);
+  border: 1px solid var(--pp-rule);
+  border-radius: 10px;
+  color: var(--pp-ink);
+  transition: border-color var(--pp-fast) var(--pp-ease);
 }
 .in-input:focus {
   outline: none;
-  border-color: var(--in-signal);
-  box-shadow: 0 0 0 3px var(--in-signal-dim);
+  border-color: var(--pp-accent);
+  box-shadow: 0 0 0 3px var(--pp-accent-wash);
+}
+.in-input::placeholder { color: var(--pp-faint); }
+
+.in-btn {
+  font-family: var(--pp-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  transition: background-color var(--pp-fast) var(--pp-ease),
+              color var(--pp-fast) var(--pp-ease),
+              border-color var(--pp-fast) var(--pp-ease);
 }
 
-/* --- a button that feels machined -------------------------------- */
-.in-btn {
-  font-family: var(--in-mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  border-radius: 9999px;
-  transition: all var(--in-fast) var(--in-ease);
-}
+/* --- scrollbar ----------------------------------------------------- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--pp-paper); }
+::-webkit-scrollbar-thumb { background: #D5D4CD; border-radius: 999px; border: 3px solid var(--pp-paper); }
+::-webkit-scrollbar-thumb:hover { background: #BFBEB6; }
+
+/* --- range inputs -------------------------------------------------- */
+input[type="range"] { accent-color: var(--pp-accent); }
+
+/* --- removed deliberately ------------------------------------------
+   .in-grain      full-screen mix-blend-mode overlay, composited every frame
+   .in-grid-bg    masked grid, another always-on layer
+   backdrop-filter on panels, which was the single largest cost
+   -------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
   .in-uncertain, .in-panel-hover { transition: none; }

@@ -132,8 +132,8 @@ export const CampaignModule: React.FC<{ onSelect?: (smiles: string) => void }> =
                 title={s.blurb}
                 className="in-btn px-4 py-2 cursor-pointer"
                 style={{
-                  background: strategy === s.id ? 'var(--in-signal)' : 'rgba(0,0,0,0.3)',
-                  color: strategy === s.id ? '#04161A' : 'var(--in-dim)',
+                  background: strategy === s.id ? 'var(--in-signal)' : 'var(--pp-sunken)',
+                  color: strategy === s.id ? '#FFFFFF' : 'var(--in-dim)',
                   border: `1px solid ${strategy === s.id ? 'var(--in-signal)' : 'var(--in-line)'}`,
                   fontWeight: strategy === s.id ? 600 : 400,
                 }}
@@ -203,7 +203,7 @@ export const CampaignModule: React.FC<{ onSelect?: (smiles: string) => void }> =
         <Rise delay={0.2}>
           <div
             className="in-panel p-5 mb-3 flex flex-wrap items-center gap-x-8 gap-y-3"
-            style={{ borderColor: diag.degenerate ? 'rgba(240,113,91,0.3)' : 'var(--in-line)' }}
+            style={{ borderColor: diag.degenerate ? 'rgba(179,38,30,0.3)' : 'var(--in-line)' }}
           >
             <div>
               <div className="in-label">acquisition spread</div>
@@ -220,7 +220,7 @@ export const CampaignModule: React.FC<{ onSelect?: (smiles: string) => void }> =
             <div
               className="in-btn px-3 py-1.5"
               style={{
-                background: diag.degenerate ? 'rgba(240,113,91,0.1)' : 'var(--in-signal-dim)',
+                background: diag.degenerate ? 'rgba(179,38,30,0.08)' : 'var(--in-signal-dim)',
                 color: diag.degenerate ? 'var(--in-alarm)' : 'var(--in-signal)',
                 border: '1px solid var(--in-line)',
               }}
@@ -236,7 +236,7 @@ export const CampaignModule: React.FC<{ onSelect?: (smiles: string) => void }> =
       )}
 
       {error && (
-        <div className="in-panel p-5 mb-3" style={{ borderColor: 'rgba(240,113,91,0.25)' }}>
+        <div className="in-panel p-5 mb-3" style={{ borderColor: 'rgba(179,38,30,0.3)' }}>
           <p className="text-xs" style={{ color: 'var(--in-dim)' }}>{error}</p>
         </div>
       )}
@@ -284,7 +284,7 @@ export const CampaignModule: React.FC<{ onSelect?: (smiles: string) => void }> =
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0, height: 0 }}
                         transition={{ duration: DUR.fast, ease: EASE }}
-                        style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                        style={{ borderBottom: '1px solid var(--pp-rule-soft)' }}
                       >
                         <td className="py-3 px-3 in-num" style={{ color: i === 0 ? 'var(--in-signal)' : 'var(--in-faint)' }}>
                           {String(i + 1).padStart(2, '0')}
@@ -318,8 +318,8 @@ export const CampaignModule: React.FC<{ onSelect?: (smiles: string) => void }> =
                             disabled={assaying !== null}
                             className="in-btn px-3.5 py-1.5 cursor-pointer disabled:opacity-40 inline-flex items-center gap-1.5"
                             style={{
-                              background: i === 0 ? 'var(--in-signal)' : 'rgba(0,0,0,0.3)',
-                              color: i === 0 ? '#04161A' : 'var(--in-dim)',
+                              background: i === 0 ? 'var(--in-signal)' : 'var(--pp-sunken)',
+                              color: i === 0 ? '#FFFFFF' : 'var(--in-dim)',
                               border: `1px solid ${i === 0 ? 'var(--in-signal)' : 'var(--in-line)'}`,
                               fontWeight: i === 0 ? 600 : 400,
                             }}
@@ -357,7 +357,7 @@ export const CampaignModule: React.FC<{ onSelect?: (smiles: string) => void }> =
                 <div
                   key={c.id}
                   className="px-3.5 py-2 rounded-xl"
-                  style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--in-line)' }}
+                  style={{ background: 'var(--pp-sunken)', border: '1px solid var(--in-line)' }}
                 >
                   <div className="text-[11px]">{c.name}</div>
                   <div className="in-num text-[10px] mt-0.5" style={{ color: 'var(--in-signal)' }}>
