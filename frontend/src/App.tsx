@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LandingPage } from './components/LandingPage';
-import { PropertyPredictionTab } from './components/PropertyPredictionTab';
-import { ParetoLaboratoryTab } from './components/ParetoLaboratoryTab';
-import { ActiveLearningTab } from './components/ActiveLearningTab';
-import { BenchmarkTab } from './components/BenchmarkTab';
-import { DiscoveryEngineTab } from './components/DiscoveryEngineTab';
 import { ConceptHelpModal } from './components/ScientificTooltip';
 import { AgencyCursor } from './components/AgencyCursor';
 import { SceneProvider, useScene } from './components/instrument/SceneCanvas';
 import { Nav } from './components/instrument/Nav';
 import { AnalyzerModule } from './components/instrument/AnalyzerModule';
+import { PredictionModule } from './components/instrument/PredictionModule';
+import { ParetoModule } from './components/instrument/ParetoModule';
+import { DiscoveryModule } from './components/instrument/DiscoveryModule';
+import { CampaignModule } from './components/instrument/CampaignModule';
+import { BenchmarkModule } from './components/instrument/BenchmarkModule';
 import { BootSequence } from './components/instrument/primitives';
 import { Atom } from 'lucide-react';
 
@@ -41,8 +41,15 @@ function AppInner() {
     };
 
     parseHash();
+    // `hashchange` matters as well as `popstate`: navigating to a different
+    // hash on the same document fires only the former, so without it a pasted
+    // or bookmarked module link left the previous view on screen.
     window.addEventListener('popstate', parseHash);
-    return () => window.removeEventListener('popstate', parseHash);
+    window.addEventListener('hashchange', parseHash);
+    return () => {
+      window.removeEventListener('popstate', parseHash);
+      window.removeEventListener('hashchange', parseHash);
+    };
   }, []);
 
   const updateHash = (view: 'landing' | 'app', tab?: string) => {
@@ -151,29 +158,20 @@ function AppInner() {
                 )}
 
                 {activeTab === 'prediction' && (
-                  <PropertyPredictionTab 
-                    initialSmiles={activeSmiles} 
-                    onSendToPareto={() => handleTabChange('pareto')}
-                  />
+                  <PredictionModule initialSmiles={activeSmiles} />
                 )}
 
                 {activeTab === 'pareto' && (
-                  <ParetoLaboratoryTab 
-                    onSelectCandidate={handleSelectCandidate} 
-                  />
+                  <ParetoModule onSelect={handleSelectCandidate} />
                 )}
 
-                {activeTab === 'discovery' && <DiscoveryEngineTab />}
+                {activeTab === 'discovery' && <DiscoveryModule />}
 
                 {activeTab === 'active_learning' && (
-                  <ActiveLearningTab 
-                    onSelectCandidate={handleSelectCandidate} 
-                  />
+                  <CampaignModule onSelect={handleSelectCandidate} />
                 )}
 
-                {activeTab === 'benchmark' && (
-                  <BenchmarkTab />
-                )}
+                {activeTab === 'benchmark' && <BenchmarkModule />}
               </motion.div>
             </AnimatePresence>
           </main>

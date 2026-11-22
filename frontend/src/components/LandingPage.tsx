@@ -464,7 +464,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Multi-Objective Conflict
             </h3>
             <p className="text-sm text-slate-400 leading-relaxed">
-              Maximizing EGFR binding affinity frequently drives up lipophilicity (LogP), which ruins aqueous solubility and induces off-target toxicity. Real drug discovery requires non-dominated Pareto trade-off navigation.
+              The changes that make a molecule dissolve better often make it less drug-like, and lowering toxicity can cost both. There is no single best compound — only a set of genuine trade-offs, which is what non-dominated Pareto sorting finds without inventing weights.
             </p>
             <div className="pt-2 text-xs font-mono text-emerald-400">
               Solution: 4-Objective Pareto Frontier Sorting
