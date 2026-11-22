@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LandingPage } from './components/LandingPage';
 import { ConceptHelpModal } from './components/ScientificTooltip';
-import { AgencyCursor } from './components/AgencyCursor';
 import { SceneProvider, useScene } from './components/instrument/SceneCanvas';
 import { Nav } from './components/instrument/Nav';
 import { AnalyzerModule } from './components/instrument/AnalyzerModule';
@@ -111,9 +110,6 @@ function AppInner() {
 
   return (
     <div className="min-h-screen flex flex-col relative" style={{ background: 'var(--pp-paper)', color: 'var(--pp-ink)' }}>
-      {/* Editorial Luxury Agency Cursor */}
-      <AgencyCursor />
-
       {/* Boot sequence — covers the first paint while models load */}
       <AnimatePresence>
         {!booted && <BootSequence ready={backendHealthy} onDone={() => setBooted(true)} />}

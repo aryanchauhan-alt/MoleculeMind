@@ -1,774 +1,773 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Atom, 
-  FlaskConical, 
-  Activity, 
-  ShieldCheck, 
-  GitCompare, 
-  Cpu, 
-  ArrowRight, 
-  ArrowUpRight, 
-  Sparkles, 
-  BookOpen, 
-  ChevronRight
-} from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import confetti from 'canvas-confetti';
-import { QuantumMolecularOrb } from './QuantumMolecularOrb';
+import { MoleculeFigure, parseMolBlock, useScene } from './instrument/SceneCanvas';
+import { Rise, Stagger, StaggerItem, Uncertain } from './instrument/primitives';
+
+/**
+ * The overview page, on paper.
+ *
+ * Two rules govern everything here.
+ *
+ * 1. NOTHING ON THIS PAGE IS A WRITTEN-IN NUMBER. The previous version
+ *    shipped a `PRESET_SHOWCASE` table of hardcoded logS values and
+ *    conformal intervals, plus a "< 38 ms" latency claim. Those are
+ *    fabricated results dressed as model output: they would not move if
+ *    the model were retrained, or deleted. Every figure below is fetched
+ *    from the running backend, or absent.
+ *
+ * 2. No backdrop blur, no glow, no particle field, no marquee. The module
+ *    views were rebuilt on the PAPER system; this page had been left on
+ *    the old dark theme, which is why the site still looked like two
+ *    different products stitched together.
+ */
+
+type TabId =
+  | 'analyzer'
+  | 'prediction'
+  | 'pareto'
+  | 'discovery'
+  | 'active_learning'
+  | 'benchmark';
 
 interface LandingPageProps {
-  onLaunchApp: (tab?: 'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark') => void;
+  onLaunchApp: (tab?: TabId) => void;
   onOpenGlossary: () => void;
   backendHealthy: boolean;
 }
 
-const PRESET_SHOWCASE = [
-  { 
-    name: 'Aspirin', 
-    formula: 'C9H8O4',
-    smiles: 'CC(=O)Oc1ccccc1C(=O)O', 
-    logS: -1.61, 
-    conf90: '[-2.12, -1.09]', 
-    domain: 'IN_DOMAIN',
-    desc: 'Classic non-steroidal anti-inflammatory compound well within Delaney training chemical space.',
-    badgeClass: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-  },
-  { 
-    name: 'Caffeine', 
-    formula: 'C8H10N4O2',
-    smiles: 'Cn1cnc2c1c(=O)n(c(=O)n2C)C', 
-    logS: -1.02, 
-    conf90: '[-1.53, -0.51]', 
-    domain: 'IN_DOMAIN',
-    desc: 'Central nervous system stimulant with high aqueous solubility and tight conformal interval.',
-    badgeClass: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-  },
-  { 
-    name: 'Ibuprofen', 
-    formula: 'C13H18O2',
-    smiles: 'CC(C)Cc1ccc(cc1)C(C)C(=O)O', 
-    logS: -3.17, 
-    conf90: '[-3.68, -2.66]', 
-    domain: 'IN_DOMAIN',
-    desc: 'Moderately lipophilic analgesic with balanced solubility and verified applicability domain.',
-    badgeClass: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-  },
-  { 
-    name: 'Diclofenac', 
-    formula: 'C14H11Cl2NO2',
-    smiles: 'O=C(O)Cc1ccccc1Nc2c(Cl)cccc2Cl', 
-    logS: -4.80, 
-    conf90: '[-5.31, -4.29]', 
-    domain: 'BORDERLINE',
-    desc: 'Dichlorinated phenylacetic acid derivative exhibiting elevated statistical leverage.',
-    badgeClass: 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-  },
-  { 
-    name: 'Imatinib core', 
-    formula: 'C29H31N7O',
-    smiles: 'Cc1ccc(NC(=O)c2ccc(CN3CCN(C)CC3)cc2)cc1', 
-    logS: -5.10, 
-    conf90: '[-5.61, -4.59]', 
-    domain: 'OUT_OF_DOMAIN',
-    desc: 'Synthetic tyrosine kinase inhibitor scaffold structurally remote from simple aqueous training space.',
-    badgeClass: 'text-rose-400 bg-rose-500/10 border-rose-500/20'
-  }
+/** Structures only. Whatever the models say about them is fetched live. */
+const SHOWCASE = [
+  { name: 'Aspirin', smiles: 'CC(=O)Oc1ccccc1C(=O)O' },
+  { name: 'Caffeine', smiles: 'Cn1cnc2c1c(=O)n(c(=O)n2C)C' },
+  { name: 'Ibuprofen', smiles: 'CC(C)Cc1ccc(cc1)C(C)C(=O)O' },
+  { name: 'Diclofenac', smiles: 'O=C(O)Cc1ccccc1Nc2c(Cl)cccc2Cl' },
+  { name: 'Imatinib core', smiles: 'Cc1ccc(NC(=O)c2ccc(CN3CCN(C)CC3)cc2)cc1' },
+  { name: 'C36 alkane', smiles: 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC' },
 ];
 
-export const LandingPage: React.FC<LandingPageProps> = ({ 
-  onLaunchApp, 
-  onOpenGlossary,
-  backendHealthy 
-}) => {
-  const [selectedDemo, setSelectedDemo] = useState(PRESET_SHOWCASE[0]);
+const DOMAIN_COLOR: Record<string, string> = {
+  IN_DOMAIN: 'var(--pp-accent)',
+  BORDERLINE: 'var(--pp-caution)',
+  OUT_OF_DOMAIN: 'var(--pp-alarm)',
+};
 
-  // Benchmark figures are fetched from /api/benchmark rather than written into
-  // the page. Hardcoding them (previously R2 = 0.894, RMSE = 0.704, MAE = 0.482)
-  // meant any retraining silently desynchronised the claim from the model.
+export const LandingPage: React.FC<LandingPageProps> = ({
+  onLaunchApp,
+  onOpenGlossary,
+  backendHealthy,
+}) => {
+  const scene = useScene();
+
+  // --- benchmark figures, fetched -------------------------------------
   const [metrics, setMetrics] = useState<any | null>(null);
   useEffect(() => {
     let cancelled = false;
     fetch('/api/benchmark')
-      .then(r => (r.ok ? r.json() : null))
-      .then(j => { if (!cancelled && j) setMetrics(j.metrics); })
-      .catch(() => { /* landing page renders without metrics when offline */ });
-    return () => { cancelled = true; };
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j) setMetrics(j.metrics);
+      })
+      .catch(() => {
+        /* the page renders without metrics when the backend is down */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const fmt = (v: any, digits = 3) =>
     typeof v === 'number' ? v.toFixed(digits) : '—';
   const coverage90 = metrics?.conformal_test_coverage?.['90%']?.empirical_coverage;
 
-  const handleLaunchWithConfetti = (tab?: 'analyzer' | 'prediction' | 'pareto' | 'active_learning' | 'benchmark') => {
-    confetti({
-      particleCount: 50,
-      spread: 60,
-      origin: { y: 0.8 },
-      colors: ['#ffffff', '#38bdf8', '#34d399']
-    });
-    onLaunchApp(tab);
-  };
+  // --- live showcase ---------------------------------------------------
+  const [picked, setPicked] = useState(SHOWCASE[0]);
+  const [demo, setDemo] = useState<any | null>(null);
+  const [demoError, setDemoError] = useState<string | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
 
-  const capabilities = [
+  const runDemo = useCallback(
+    async (smiles: string) => {
+      setDemoLoading(true);
+      setDemoError(null);
+      try {
+        const res = await fetch('/api/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ smiles }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.detail || 'Prediction failed.');
+        setDemo(json);
+
+        if (json.sdf_3d) {
+          const { atoms, bonds } = parseMolBlock(json.sdf_3d);
+          scene.setMolecule(atoms, bonds);
+        }
+        const margin =
+          json.properties?.solubility_logs?.conformal?.intervals?.['90%']
+            ?.margin_error ?? 0;
+        scene.setUncertainty(Math.min(margin / 2.5, 1));
+        scene.setOutOfDomain(
+          json.applicability_domain?.status === 'OUT_OF_DOMAIN'
+        );
+      } catch (e) {
+        setDemo(null);
+        setDemoError(e instanceof Error ? e.message : 'Prediction failed.');
+      } finally {
+        setDemoLoading(false);
+      }
+    },
+    [scene]
+  );
+
+  useEffect(() => {
+    scene.setMode('idle');
+    runDemo(picked.smiles);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked.smiles]);
+
+  const sol = demo?.properties?.solubility_logs;
+  const iv90 = sol?.conformal?.intervals?.['90%'];
+  const domain = demo?.applicability_domain;
+
+  const MODULES: {
+    id: TabId;
+    num: string;
+    title: string;
+    what: string;
+    how: string;
+  }[] = [
     {
-      id: 'analyzer' as const,
+      id: 'analyzer',
       num: '01',
-      title: 'Molecular Analyzer',
-      subtitle: 'Structure Validation & 3D Minimization',
-      badge: 'RDKit & 3Dmol.js',
-      description: 'Instant SMILES parsing, publication-grade 2D vector depictions, and MMFF94 force-field 3D geometry generation.',
-      details: 'Calculates Lipinski Rule of 5 oral bioavailability compliance, TPSA, and QED drug-likeness indices in sub-millisecond execution cycles.',
-      icon: FlaskConical
+      title: 'Analyzer',
+      what: 'Reads a SMILES string, draws the structure and builds a 3D conformer.',
+      how: 'RDKit parsing and canonicalisation, ETKDGv3 embedding, MMFF94 minimisation, Lipinski / Veber / QED descriptors.',
     },
     {
-      id: 'prediction' as const,
+      id: 'prediction',
       num: '02',
-      title: 'Property Prediction',
-      subtitle: 'Delaney ESOL Trained Architecture',
-      badge: 'ExtraTrees Regressor',
-      description: 'Genuine multi-feature regression model trained on 1,128 authentic Delaney ESOL measured compounds.',
-      details: metrics
-        ? `Evaluated on a held-out test split of ${metrics.test_samples} compounds: R² = ${fmt(metrics.r2_score)}, RMSE = ${fmt(metrics.rmse)} log(mol/L), MAE = ${fmt(metrics.mae)}. Backed by 1,024-bit Morgan Fingerprints.`
-        : 'Evaluated on a held-out test split; live metrics load from the backend.',
-      icon: Activity
+      title: 'Prediction',
+      what: 'Predicts aqueous solubility and returns a calibrated interval, not a bare number.',
+      how: 'ExtraTrees on 1,024-bit Morgan fingerprints plus 8 descriptors, trained on the Delaney ESOL measurements.',
     },
     {
-      id: 'prediction' as const,
+      id: 'prediction',
       num: '03',
-      title: 'Conformal Uncertainty',
-      subtitle: 'Distribution-Free Coverage',
-      badge: 'Inductive Conformal Prediction',
-      description: 'Finite-sample confidence intervals guaranteeing nominal coverage P(Y ∈ [L, U]) ≥ 1 - α without Gaussian assumptions.',
-      details: 'Replaces dangerous point estimates with calibrated intervals at 80%, 90%, and 95% confidence based on nonconformity residuals.',
-      icon: ShieldCheck
+      title: 'Uncertainty',
+      what: 'Turns the model spread into an interval with a finite-sample coverage guarantee.',
+      how: 'Locally-adaptive split conformal prediction, calibrated on a held-out partition at 80 / 90 / 95%.',
     },
     {
-      id: 'prediction' as const,
+      id: 'prediction',
       num: '04',
-      title: 'Applicability Domain',
-      subtitle: 'OECD Guidance Document No. 69',
-      badge: 'Tanimoto & PCA Leverage',
-      description: 'Evaluates structural proximity to the training space using Morgan fingerprint Tanimoto distance and PCA statistical leverage.',
-      details: 'Flags molecules as IN_DOMAIN, BORDERLINE, or OUT_OF_DOMAIN to prevent catastrophic extrapolation on unfamiliar scaffolds.',
-      icon: Sparkles
+      title: 'Applicability domain',
+      what: 'Says when the molecule is too unlike the training set for the prediction to mean anything.',
+      how: 'Tanimoto distance to the training set and PCA leverage against the OECD h* cutoff, combined as a two-condition rule.',
     },
     {
-      id: 'pareto' as const,
+      id: 'pareto',
       num: '05',
-      title: 'Pareto Laboratory',
-      subtitle: 'Multi-Objective Trade-Off Frontier',
-      badge: 'Non-Dominated Sorting',
-      description: 'Simultaneous 4-objective optimization balancing biological potency, aqueous solubility, toxicity risk, and drug-likeness.',
-      details: 'Interactive 2D & 3D scatter plots identifying the non-dominated Pareto frontier where no property can improve without sacrificing another.',
-      icon: GitCompare
+      title: 'Pareto',
+      what: 'Finds the genuine trade-offs between competing objectives, without inventing weights.',
+      how: 'Fast non-dominated sorting, with the frontier recomputed under sampled uncertainty rather than on point estimates.',
     },
     {
-      id: 'active_learning' as const,
+      id: 'active_learning',
       num: '06',
-      title: 'Active Learning Queue',
-      subtitle: 'Human-in-the-Loop Discovery',
-      badge: 'BoTorch Gaussian Process',
-      description: 'Iterative Bayesian optimization simulating compound evaluation rounds using acquisition functions.',
-      details: 'Employs Upper Confidence Bound (UCB), Expected Improvement (EI), and Uncertainty Sampling to iteratively acquire high-value candidates.',
-      icon: Cpu
-    }
+      title: 'Active learning',
+      what: 'Chooses which compounds are worth the next round of experiments.',
+      how: 'A BoTorch SingleTaskGP surrogate with UCB, Expected Improvement and uncertainty sampling, scored over a hidden pool.',
+    },
   ];
 
+  const navLink =
+    'hover:opacity-100 opacity-65 transition-opacity cursor-pointer';
+
   return (
-    <div className="relative min-h-screen bg-[#060709] text-slate-100 flex flex-col font-sans selection:bg-white selection:text-black overflow-hidden">
-      
-      {/* Editorial Floating Navigation Bar */}
-      <header className="sticky top-0 z-40 bg-[#060709]/75 backdrop-blur-2xl border-b border-white/[0.07]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
-            
-            {/* Wordmark */}
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/[0.05] border border-white/[0.12] flex items-center justify-center">
-                <Atom className="w-4 h-4 text-white" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-base font-medium tracking-tight text-white">
-                  MoleculeMind
-                </span>
-                <span className="text-[10px] tracking-wider uppercase text-slate-400 font-mono">
-                  Autonomous Molecular Intelligence
-                </span>
-              </div>
-            </div>
+    <div className="min-h-screen flex flex-col">
+      {/* ---------------------------------------------------------- nav */}
+      <header
+        className="sticky top-0 z-40"
+        style={{
+          background: 'var(--pp-paper)',
+          borderBottom: '1px solid var(--pp-rule)',
+        }}
+      >
+        <div className="max-w-[1400px] mx-auto px-5 sm:px-8 h-16 flex items-center justify-between gap-6">
+          <div className="flex items-baseline gap-3">
+            <span className="in-display text-[15px]">MoleculeMind</span>
+            <span className="in-label hidden sm:inline">
+              uncertainty-aware discovery
+            </span>
+          </div>
 
-            {/* Quick Links */}
-            <div className="hidden md:flex items-center gap-8 text-xs font-medium text-slate-300">
-              <a href="#philosophy" className="hover:text-white transition-colors">Philosophy</a>
-              <a href="#showcase" className="hover:text-white transition-colors">Interactive Showcase</a>
-              <a href="#modules" className="hover:text-white transition-colors">Platform Modules</a>
-              <a href="#benchmarks" className="hover:text-white transition-colors">Benchmarks</a>
-            </div>
+          <nav className="hidden md:flex items-center gap-7 in-label">
+            <a href="#problem" className={navLink}>
+              problem
+            </a>
+            <a href="#live" className={navLink}>
+              live
+            </a>
+            <a href="#modules" className={navLink}>
+              modules
+            </a>
+            <a href="#validation" className={navLink}>
+              validation
+            </a>
+          </nav>
 
-            {/* CTA */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={onOpenGlossary}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium text-slate-300 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] transition-all cursor-pointer"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>Theory Guide</span>
-              </button>
-
-              <button
-                onClick={() => handleLaunchWithConfetti('analyzer')}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-semibold text-zinc-950 bg-white hover:bg-slate-200 transition-all shadow-lg cursor-pointer"
-              >
-                <span>Launch Workbench</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
+          <div className="flex items-center gap-3">
+            <span
+              className="in-label hidden sm:flex items-center gap-2"
+              title={
+                backendHealthy
+                  ? 'Backend reachable'
+                  : 'Backend unreachable — figures below will be blank'
+              }
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{
+                  background: backendHealthy
+                    ? 'var(--pp-accent)'
+                    : 'var(--pp-caution)',
+                }}
+              />
+              {backendHealthy ? 'online' : 'offline'}
+            </span>
+            <button onClick={() => onLaunchApp('analyzer')} className="in-btn">
+              Open workbench
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Atmospheric Diffused Background Lighting */}
-      <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[900px] h-[550px] ambient-glow-silver blur-[160px] pointer-events-none z-0" />
-      <div className="absolute top-[600px] left-1/4 w-[600px] h-[400px] ambient-glow-cyan blur-[180px] pointer-events-none z-0" />
-      <div className="absolute top-[1200px] right-1/4 w-[700px] h-[450px] ambient-glow-emerald blur-[180px] pointer-events-none z-0" />
-
-      {/* Hero Section */}
-      <section className="relative z-10 pt-16 sm:pt-24 pb-20 sm:pb-32 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-          
-          {/* Left Column: Editorial Headline & Narrative */}
-          <div className="lg:col-span-7 space-y-8">
-            
-            {/* Kicker Pill */}
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.1] text-slate-300 text-[11px] font-mono tracking-wider uppercase"
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${backendHealthy ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-              <span>Uncertainty-Aware Drug Discovery • v2.4</span>
-            </motion.div>
-
-            {/* Giant Editorial Headline */}
-            <motion.div
-              initial={{ opacity: 0, y: 25 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.1 }}
-              className="space-y-2"
-            >
-              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-medium tracking-tight text-white editorial-title">
-                Molecular Design.
-              </h1>
-              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-medium tracking-tight text-slate-400 editorial-title">
-                Elevated by Certainty.
-              </h1>
-            </motion.div>
-
-            {/* Narrative Paragraph */}
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.2 }}
-              className="text-base sm:text-lg text-slate-300 max-w-2xl leading-relaxed font-normal"
-            >
-              Drug discovery is fraught with uncalibrated predictions and out-of-distribution hallucinations. 
-              MoleculeMind integrates <strong className="text-white font-medium">Delaney ESOL regression</strong>, 
-              <strong className="text-white font-medium"> finite-sample conformal prediction intervals</strong>, and 
-              <strong className="text-white font-medium"> human-in-the-loop Bayesian active learning</strong> to transform computational hypotheses into confident laboratory decisions.
-            </motion.p>
-
-            {/* Action Buttons */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.3 }}
-              className="flex flex-wrap items-center gap-4 pt-2"
-            >
-              <button
-                onClick={() => handleLaunchWithConfetti('analyzer')}
-                className="px-8 py-4 rounded-full bg-white text-zinc-950 font-semibold text-sm hover:bg-slate-200 transition-all shadow-[0_4px_25px_rgba(255,255,255,0.18)] hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex items-center gap-2.5"
-              >
-                <span>Launch Interactive Workbench</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={onOpenGlossary}
-                className="px-6 py-4 rounded-full bg-white/[0.05] hover:bg-white/[0.09] text-white border border-white/[0.12] hover:border-white/25 text-sm font-medium transition-all cursor-pointer flex items-center gap-2"
-              >
-                <BookOpen className="w-4 h-4 text-slate-300" />
-                <span>Presentation Methodology</span>
-              </button>
-            </motion.div>
-
-            {/* Quick Metrics Bar */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
-              className="grid grid-cols-3 gap-6 pt-6 border-t border-white/[0.08] max-w-lg"
-            >
-              <div>
-                <div className="text-2xl sm:text-3xl font-light text-white font-mono">{fmt(metrics?.r2_score)}</div>
-                <div className="text-[11px] text-slate-400 font-mono tracking-wider uppercase mt-1">Test R² Score</div>
+      {/* -------------------------------------------------------- hero */}
+      <section className="max-w-[1400px] w-full mx-auto px-5 sm:px-8 pt-16 sm:pt-24 pb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end">
+          <div className="lg:col-span-7">
+            <Rise>
+              <div className="in-label mb-6">
+                an honest instrument, not an oracle
               </div>
-              <div>
-                <div className="text-2xl sm:text-3xl font-light text-emerald-400 font-mono">
-                  {typeof coverage90 === 'number' ? `${coverage90.toFixed(1)}%` : '—'}
+            </Rise>
+
+            <motion.h1
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+              className="in-display-xl text-[13vw] sm:text-[8.5vw] lg:text-[6.4rem]"
+            >
+              A prediction
+              <br />
+              you can
+              <br />
+              <span style={{ color: 'var(--pp-accent)' }}>argue with.</span>
+            </motion.h1>
+
+            <Rise delay={0.15}>
+              <p
+                className="mt-8 max-w-xl text-[15px] leading-relaxed"
+                style={{ color: 'var(--pp-muted)' }}
+              >
+                Most molecular models hand a chemist a single number and no way
+                to tell a good guess from a bad one. This platform refuses to
+                do that. Every prediction arrives with a calibrated interval, a
+                statement about whether the molecule is even inside the
+                training set's chemical space, and the trade-offs it forces
+                against every other objective.
+              </p>
+            </Rise>
+
+            <Rise delay={0.25}>
+              <div className="mt-9 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => onLaunchApp('analyzer')}
+                  className="in-btn"
+                  style={{
+                    background: 'var(--pp-ink)',
+                    color: 'var(--pp-paper)',
+                    borderColor: 'var(--pp-ink)',
+                  }}
+                >
+                  Open the workbench
+                </button>
+                <button onClick={onOpenGlossary} className="in-btn">
+                  Methodology
+                </button>
+              </div>
+            </Rise>
+          </div>
+
+          <div className="lg:col-span-5">
+            <MoleculeFigure
+              height={320}
+              caption={
+                demo
+                  ? `${picked.name} · MMFF94-minimised conformer · haze tracks the calibrated uncertainty`
+                  : 'awaiting backend'
+              }
+            />
+          </div>
+        </div>
+
+        {/* real figures, or nothing */}
+        <Stagger className="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-px" delay={0.3}>
+          {[
+            {
+              k: 'test R² (ESOL)',
+              v: fmt(metrics?.r2_score),
+              n: 'held-out split',
+            },
+            {
+              k: 'empirical coverage',
+              v:
+                typeof coverage90 === 'number'
+                  ? `${coverage90.toFixed(1)}%`
+                  : '—',
+              n: 'at 90% nominal',
+            },
+            {
+              k: 'RMSE',
+              v: fmt(metrics?.rmse),
+              n: 'log(mol/L)',
+            },
+            {
+              k: 'test compounds',
+              v:
+                typeof metrics?.test_samples === 'number'
+                  ? String(metrics.test_samples)
+                  : '—',
+              n: 'never seen in training',
+            },
+          ].map((s) => (
+            <StaggerItem key={s.k}>
+              <div
+                className="py-6 pr-6"
+                style={{ borderTop: '1px solid var(--pp-rule)' }}
+              >
+                <div className="in-num text-3xl sm:text-4xl font-light">
+                  {s.v}
                 </div>
-                <div className="text-[11px] text-slate-400 font-mono tracking-wider uppercase mt-1">Coverage at 90% Nominal</div>
+                <div className="in-label mt-3">{s.k}</div>
+                <div
+                  className="text-[11px] mt-1"
+                  style={{ color: 'var(--pp-faint)' }}
+                >
+                  {s.n}
+                </div>
               </div>
-              <div>
-                <div className="text-2xl sm:text-3xl font-light text-cyan-400 font-mono">1,128</div>
-                <div className="text-[11px] text-slate-400 font-mono tracking-wider uppercase mt-1">ESOL Compounds</div>
-              </div>
-            </motion.div>
-
-          </div>
-
-          {/* Right Column: Interactive 3D Molecular Sculpture */}
-          <div className="lg:col-span-5 relative flex items-center justify-center">
-            <div className="relative w-full aspect-square max-w-[500px]">
-              
-              {/* Subtle Ambient Background Halo */}
-              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-500/10 via-white/[0.03] to-emerald-500/10 blur-3xl" />
-              
-              {/* Three.js Interactive WebGL Orb */}
-              <div className="relative w-full h-full z-10">
-                <QuantumMolecularOrb className="w-full h-full" particleCount={1400} interactive={true} />
-              </div>
-
-              {/* Minimal Floating Indicator Pill */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-[#0c0d14]/80 border border-white/[0.1] backdrop-blur-xl text-[11px] text-slate-400 font-mono z-20 flex items-center gap-2 pointer-events-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                <span>Interactive 3D Molecular Conformer (Drag to Orbit)</span>
-              </div>
-
-            </div>
-          </div>
-
-        </div>
+            </StaggerItem>
+          ))}
+        </Stagger>
       </section>
 
-      {/* Infinite Horizontal Scientific Marquee */}
-      <section className="relative z-10 py-5 bg-[#0a0b10] border-y border-white/[0.06] overflow-hidden">
-        <div className="animate-marquee flex items-center gap-12 text-xs font-mono text-slate-400 tracking-wider uppercase whitespace-nowrap">
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-            <span>Delaney ESOL Benchmark (N=1,128)</span>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span>Inductive Conformal Prediction P(Y ∈ [L, U]) ≥ 1 - α</span>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-            <span>BoTorch SingleTaskGP Active Learning</span>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span>OECD Guidance Document No. 69 Applicability Domain</span>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-white" />
-            <span>RDKit MMFF94 3D Energy Minimization</span>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-            <span>Pareto Non-Dominated Sorting Multi-Objective</span>
-          </span>
-          <span>•</span>
-          {/* Duplicate for infinite seamless scroll */}
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-            <span>Delaney ESOL Benchmark (N=1,128)</span>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span>Inductive Conformal Prediction P(Y ∈ [L, U]) ≥ 1 - α</span>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-            <span>BoTorch SingleTaskGP Active Learning</span>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span>OECD Guidance Document No. 69 Applicability Domain</span>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-white" />
-            <span>RDKit MMFF94 3D Energy Minimization</span>
-          </span>
-          <span>•</span>
-        </div>
-      </section>
-
-      {/* Section 2: The Core Philosophy / 3 Structural Flaws */}
-      <section id="philosophy" className="relative z-10 py-24 sm:py-32 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        
-        {/* Section Heading */}
-        <div className="max-w-3xl mb-16 space-y-4">
-          <div className="editorial-subhead text-cyan-400">The Problem Paradigm</div>
-          <h2 className="text-3xl sm:text-5xl font-medium tracking-tight text-white editorial-title">
-            Why Conventional Molecular ML Fails in the Wet Lab.
+      {/* ----------------------------------------------------- problem */}
+      <section
+        id="problem"
+        className="max-w-[1400px] w-full mx-auto px-5 sm:px-8 py-20 sm:py-28"
+      >
+        <Rise>
+          <div className="in-label">the problem</div>
+          <h2 className="in-display text-3xl sm:text-5xl mt-4 max-w-3xl">
+            Three ways a confident number misleads a chemist.
           </h2>
-          <p className="text-base text-slate-400 leading-relaxed">
-            Standard drug discovery pipelines deploy black-box models that generate confident-looking point predictions. 
-            When taken to synthesis, over 90% of candidates fail due to three fundamental flaws.
-          </p>
-        </div>
+        </Rise>
 
-        {/* 3 Editorial Numbered Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          
-          <div className="p-8 rounded-3xl bg-[#0c0d14]/70 border border-white/[0.08] hover:border-white/20 transition-all duration-300 space-y-5">
-            <div className="text-2xl font-light text-slate-400 font-mono">01 / 03</div>
-            <h3 className="text-xl font-medium text-white tracking-tight">
-              The Illusion of Point Estimates
-            </h3>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              A model predicting aqueous solubility at <code className="text-slate-300 font-mono">-2.5 logS</code> conceals whether the true laboratory value lies within ±0.3 or ±3.0. Without distribution-free prediction intervals, chemists cannot quantify experiment risk.
-            </p>
-            <div className="pt-2 text-xs font-mono text-cyan-400">
-              Solution: Split Conformal Calibration
+        <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
+          {[
+            {
+              n: '01',
+              t: 'A point estimate hides its own error',
+              b: 'A model that says −2.5 logS does not say whether the laboratory value is within ±0.3 or ±3.0. The first is worth synthesising on; the second is a coin flip.',
+              s: 'answered by split conformal calibration',
+            },
+            {
+              n: '02',
+              t: 'Models extrapolate silently',
+              b: 'Show a tree ensemble a scaffold unlike anything it was trained on and it still returns a number, with no outward sign that it is guessing far outside its evidence.',
+              s: 'answered by an OECD-style applicability domain',
+            },
+            {
+              n: '03',
+              t: 'Objectives genuinely conflict',
+              b: 'What makes a molecule dissolve better often makes it less drug-like, and reducing toxicity can cost both. There is no single best compound, only a set of honest trade-offs.',
+              s: 'answered by non-dominated Pareto sorting',
+            },
+          ].map((c) => (
+            <div key={c.n} style={{ borderTop: '1px solid var(--pp-rule)' }}>
+              <div className="in-num text-sm pt-5" style={{ color: 'var(--pp-faint)' }}>
+                {c.n} / 03
+              </div>
+              <h3 className="in-display text-xl mt-4">{c.t}</h3>
+              <p
+                className="text-sm leading-relaxed mt-3"
+                style={{ color: 'var(--pp-muted)' }}
+              >
+                {c.b}
+              </p>
+              <div
+                className="in-label mt-5"
+                style={{ color: 'var(--pp-accent)' }}
+              >
+                {c.s}
+              </div>
             </div>
-          </div>
-
-          <div className="p-8 rounded-3xl bg-[#0c0d14]/70 border border-white/[0.08] hover:border-white/20 transition-all duration-300 space-y-5">
-            <div className="text-2xl font-light text-slate-400 font-mono">02 / 03</div>
-            <h3 className="text-xl font-medium text-white tracking-tight">
-              Out-of-Distribution Hallucinations
-            </h3>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              When a novel molecular scaffold is presented, regression trees and neural networks silently extrapolate far beyond their training chemical manifold, producing statistically meaningless numbers with false confidence.
-            </p>
-            <div className="pt-2 text-xs font-mono text-amber-400">
-              Solution: OECD Guidance No. 69 Leverage Cutoff
-            </div>
-          </div>
-
-          <div className="p-8 rounded-3xl bg-[#0c0d14]/70 border border-white/[0.08] hover:border-white/20 transition-all duration-300 space-y-5">
-            <div className="text-2xl font-light text-slate-400 font-mono">03 / 03</div>
-            <h3 className="text-xl font-medium text-white tracking-tight">
-              Multi-Objective Conflict
-            </h3>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              The changes that make a molecule dissolve better often make it less drug-like, and lowering toxicity can cost both. There is no single best compound — only a set of genuine trade-offs, which is what non-dominated Pareto sorting finds without inventing weights.
-            </p>
-            <div className="pt-2 text-xs font-mono text-emerald-400">
-              Solution: 4-Objective Pareto Frontier Sorting
-            </div>
-          </div>
-
+          ))}
         </div>
       </section>
 
-      {/* Section 3: Interactive Compound Showcase */}
-      <section id="showcase" className="relative z-10 py-20 bg-[#090a0f] border-y border-white/[0.06]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+      {/* -------------------------------------------------------- live */}
+      <section
+        id="live"
+        style={{
+          background: 'var(--pp-sunken)',
+          borderTop: '1px solid var(--pp-rule)',
+          borderBottom: '1px solid var(--pp-rule)',
+        }}
+      >
+        <div className="max-w-[1400px] w-full mx-auto px-5 sm:px-8 py-20 sm:py-24">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div>
-              <div className="editorial-subhead text-emerald-400">Live Interactive Demonstration</div>
-              <h2 className="text-3xl sm:text-4xl font-medium tracking-tight text-white editorial-title mt-2">
-                Evaluate Real Chemical Structures.
+              <div className="in-label">live, from the running model</div>
+              <h2 className="in-display text-3xl sm:text-4xl mt-4 max-w-2xl">
+                Watch the interval widen as the molecule gets stranger.
               </h2>
-              <p className="text-sm text-slate-400 mt-2">
-                Click any compound to inspect its real-time Delaney ESOL prediction, calibrated interval, and domain reliability.
+              <p
+                className="text-sm mt-3 max-w-xl"
+                style={{ color: 'var(--pp-muted)' }}
+              >
+                These are real requests to <code className="in-num">/api/predict</code>,
+                made by your browser just now. Nothing on this page is stored
+                or typed in.
               </p>
             </div>
 
-            {/* Presets Selector Pills */}
-            <div className="flex flex-wrap items-center gap-2">
-              {PRESET_SHOWCASE.map((compound) => (
-                <button
-                  key={compound.name}
-                  onClick={() => setSelectedDemo(compound)}
-                  className={`px-4 py-2 rounded-full text-xs font-medium transition-all cursor-pointer ${
-                    selectedDemo.name === compound.name
-                      ? 'bg-white text-zinc-950 font-semibold shadow-md'
-                      : 'bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] border border-white/[0.08]'
-                  }`}
-                >
-                  {compound.name}
-                </button>
-              ))}
+            <div className="flex flex-wrap gap-2">
+              {SHOWCASE.map((c) => {
+                const on = picked.name === c.name;
+                return (
+                  <button
+                    key={c.name}
+                    onClick={() => setPicked(c)}
+                    className="px-3.5 py-2 text-[12px] rounded-full transition-colors cursor-pointer"
+                    style={{
+                      background: on ? 'var(--pp-ink)' : 'var(--pp-raised)',
+                      color: on ? 'var(--pp-paper)' : 'var(--pp-ink)',
+                      border: `1px solid ${on ? 'var(--pp-ink)' : 'var(--pp-rule)'}`,
+                    }}
+                  >
+                    {c.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Showcase Display Card */}
-          <div className="p-8 sm:p-10 rounded-3xl bg-[#0e1017]/90 border border-white/[0.1] shadow-2xl backdrop-blur-2xl">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-              
-              {/* Molecule Summary */}
-              <div className="lg:col-span-6 space-y-6">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-2xl sm:text-3xl font-medium text-white tracking-tight">
-                    {selectedDemo.name}
-                  </h3>
-                  <span className="text-xs font-mono px-3 py-1 rounded-full bg-white/[0.06] border border-white/[0.1] text-slate-300">
-                    {selectedDemo.formula}
-                  </span>
-                  <span className={`text-xs font-mono font-semibold px-3 py-1 rounded-full border ${selectedDemo.badgeClass}`}>
-                    {selectedDemo.domain}
-                  </span>
-                </div>
+          <div className="mt-10 in-panel p-7 sm:p-9">
+            {demoError && (
+              <div className="text-sm" style={{ color: 'var(--pp-alarm)' }}>
+                {demoError}
+              </div>
+            )}
 
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/[0.06] font-mono text-xs text-slate-300 break-all">
-                  <span className="text-slate-400 mr-2">SMILES:</span>
-                  {selectedDemo.smiles}
-                </div>
-
-                <p className="text-sm text-slate-300 leading-relaxed">
-                  {selectedDemo.desc}
-                </p>
-
-                <div className="flex items-center gap-4 pt-2">
-                  <button
-                    onClick={() => {
-                      onLaunchApp('prediction');
-                    }}
-                    className="px-6 py-3 rounded-full bg-white text-zinc-950 text-xs font-semibold hover:bg-slate-200 transition-all shadow-md cursor-pointer flex items-center gap-2"
+            {!demoError && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="lg:col-span-5">
+                  <h3 className="in-display text-2xl">{picked.name}</h3>
+                  <div
+                    className="in-num text-[11px] mt-2 break-all"
+                    style={{ color: 'var(--pp-muted)' }}
                   >
-                    <span>Analyze in Prediction Workbench</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    {picked.smiles}
+                  </div>
+
+                  {demo?.descriptors && (
+                    <dl className="mt-6 grid grid-cols-2 gap-y-4">
+                      {[
+                        ['formula', demo.descriptors.formula],
+                        ['MW', demo.descriptors.molecular_weight],
+                        ['logP', demo.descriptors.logp],
+                        ['QED', demo.descriptors.qed],
+                      ].map(([k, v]) => (
+                        <div key={String(k)}>
+                          <dt className="in-label">{k}</dt>
+                          <dd className="in-num text-base mt-1">{String(v)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+
+                  <button
+                    onClick={() => onLaunchApp('prediction')}
+                    className="in-btn mt-7"
+                  >
+                    Take it to the workbench
                   </button>
                 </div>
-              </div>
 
-              {/* Live Metric Cards */}
-              <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                
-                <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.07] space-y-2">
-                  <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
-                    Predicted Solubility
-                  </div>
-                  <div className="text-3xl font-light text-white font-mono">
-                    {selectedDemo.logS} <span className="text-xs text-slate-400 font-sans">log(mol/L)</span>
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    Delaney ESOL ExtraTrees regression estimate
-                  </div>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.07] space-y-2">
-                  <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                    <span>90% Conformal Interval</span>
-                    <span className="text-emerald-400">Guaranteed</span>
-                  </div>
-                  <div className="text-2xl font-light text-emerald-300 font-mono">
-                    {selectedDemo.conf90}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    Nonconformity residual calibrated coverage
-                  </div>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.07] space-y-2">
-                  <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
-                    Chemical Domain Status
-                  </div>
-                  <div className="text-lg font-medium text-white flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${selectedDemo.domain === 'IN_DOMAIN' ? 'bg-emerald-400' : selectedDemo.domain === 'BORDERLINE' ? 'bg-amber-400' : 'bg-rose-400'}`} />
-                    <span>{selectedDemo.domain}</span>
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    OECD h* statistical leverage assessment
-                  </div>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.07] space-y-2">
-                  <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
-                    Inference Latency
-                  </div>
-                  <div className="text-2xl font-light text-cyan-300 font-mono">
-                    &lt; 38 ms
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    Morgan 1024-bit + 8 physicochemical features
-                  </div>
-                </div>
-
-              </div>
-
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* Section 4: The 6 Platform Discovery Modules */}
-      <section id="modules" className="relative z-10 py-24 sm:py-32 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        
-        {/* Section Heading */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-16">
-          <div className="max-w-2xl space-y-4">
-            <div className="editorial-subhead text-cyan-400">Interactive Architecture</div>
-            <h2 className="text-3xl sm:text-5xl font-medium tracking-tight text-white editorial-title">
-              Six Specialized Discovery Engines.
-            </h2>
-            <p className="text-base text-slate-400 leading-relaxed">
-              Each module addresses a distinct scientific challenge, connected through a seamless data pipeline.
-            </p>
-          </div>
-
-          <button
-            onClick={() => handleLaunchWithConfetti('analyzer')}
-            className="px-6 py-3 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white border border-white/[0.12] text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 self-start md:self-auto"
-          >
-            <span>Open All Modules</span>
-            <ArrowUpRight className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* 6 Capabilities Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {capabilities.map((module) => {
-            const Icon = module.icon;
-            return (
-              <div
-                key={module.id + module.num}
-                className="group p-8 rounded-3xl bg-[#0c0d14]/70 border border-white/[0.08] hover:border-white/25 transition-all duration-300 flex flex-col justify-between"
-              >
-                <div className="space-y-5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono text-slate-400">
-                      {module.num} / 06
-                    </span>
-                    <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/[0.08] text-slate-300">
-                      {module.badge}
-                    </span>
-                  </div>
-
-                  <div className="w-10 h-10 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-white group-hover:bg-white group-hover:text-black transition-all duration-300">
-                    <Icon className="w-5 h-5" />
-                  </div>
-
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-medium text-white tracking-tight">
-                      {module.title}
-                    </h3>
-                    <div className="text-xs text-slate-400 font-mono">
-                      {module.subtitle}
+                <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="pp-well p-5">
+                    <div className="in-label">predicted solubility</div>
+                    <div className="in-num text-4xl font-light mt-3">
+                      {iv90 && typeof sol?.value === 'number' ? (
+                        <Uncertain
+                          sigma={iv90.margin_error}
+                          outOfDomain={domain?.status === 'OUT_OF_DOMAIN'}
+                        >
+                          {sol.value.toFixed(3)}
+                        </Uncertain>
+                      ) : demoLoading ? (
+                        '…'
+                      ) : (
+                        '—'
+                      )}
+                    </div>
+                    <div
+                      className="text-[11px] mt-2"
+                      style={{ color: 'var(--pp-faint)' }}
+                    >
+                      log(mol/L) · {sol?.model ?? 'model unavailable'}
                     </div>
                   </div>
 
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    {module.description}
-                  </p>
+                  <div className="pp-well p-5">
+                    <div className="in-label">90% conformal interval</div>
+                    <div className="in-num text-2xl font-light mt-3">
+                      {iv90
+                        ? `[${iv90.lower_bound.toFixed(2)}, ${iv90.upper_bound.toFixed(2)}]`
+                        : '—'}
+                    </div>
+                    <div
+                      className="text-[11px] mt-2"
+                      style={{ color: 'var(--pp-faint)' }}
+                    >
+                      {iv90
+                        ? `width ${iv90.interval_width.toFixed(2)} · calibrated on ${sol?.conformal?.calibration_set_size} held-out compounds`
+                        : 'awaiting backend'}
+                    </div>
+                  </div>
 
-                  <p className="text-[11px] text-slate-400 leading-relaxed pt-2 border-t border-white/[0.05]">
-                    {module.details}
-                  </p>
-                </div>
+                  <div className="pp-well p-5">
+                    <div className="in-label">applicability domain</div>
+                    <div
+                      className="in-display text-lg mt-3 flex items-center gap-2"
+                      style={{
+                        color:
+                          DOMAIN_COLOR[domain?.status] ?? 'var(--pp-muted)',
+                      }}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{
+                          background:
+                            DOMAIN_COLOR[domain?.status] ?? 'var(--pp-faint)',
+                        }}
+                      />
+                      {domain?.status ?? '—'}
+                    </div>
+                    <div
+                      className="text-[11px] mt-2"
+                      style={{ color: 'var(--pp-faint)' }}
+                    >
+                      Tanimoto similarity to the training set combined with PCA
+                      leverage
+                    </div>
+                  </div>
 
-                <div className="pt-6">
-                  <button
-                    onClick={() => handleLaunchWithConfetti(module.id)}
-                    className="w-full py-2.5 rounded-xl bg-white/[0.03] hover:bg-white group-hover:text-zinc-950 text-slate-300 border border-white/[0.08] text-xs font-medium transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <span>Launch Module</span>
-                    <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                  </button>
+                  <div className="pp-well p-5">
+                    <div className="in-label">ensemble spread</div>
+                    <div className="in-num text-2xl font-light mt-3">
+                      {typeof sol?.ensemble_spread === 'number'
+                        ? sol.ensemble_spread.toFixed(3)
+                        : '—'}
+                    </div>
+                    <div
+                      className="text-[11px] mt-2"
+                      style={{ color: 'var(--pp-faint)' }}
+                    >
+                      disagreement between the trees, before calibration
+                    </div>
+                  </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            )}
+          </div>
 
+          <p
+            className="in-label mt-5"
+            style={{ color: 'var(--pp-faint)', textTransform: 'none', letterSpacing: '0.02em' }}
+          >
+            The number above blurs in proportion to its own interval. That is
+            the one visual rule the whole interface is built on.
+          </p>
+        </div>
       </section>
 
-      {/* Section 5: Empirical Benchmarks */}
-      <section id="benchmarks" className="relative z-10 py-20 bg-[#08090e] border-t border-white/[0.06]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="max-w-2xl mb-12 space-y-4">
-            <div className="editorial-subhead text-cyan-400">Scientific Validation</div>
-            <h2 className="text-3xl sm:text-4xl font-medium tracking-tight text-white editorial-title">
-              Trained on Rigorous Experimental Ground Truth.
-            </h2>
-            <p className="text-sm text-slate-400">
-              Unlike theoretical toys, MoleculeMind is backed by peer-reviewed Delaney solubility datasets and calibrated against independent test distributions.
-            </p>
+      {/* ----------------------------------------------------- modules */}
+      <section
+        id="modules"
+        className="max-w-[1400px] w-full mx-auto px-5 sm:px-8 py-20 sm:py-28"
+      >
+        <Rise>
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div>
+              <div className="in-label">what is in it</div>
+              <h2 className="in-display text-3xl sm:text-5xl mt-4 max-w-2xl">
+                Six modules, one pipeline.
+              </h2>
+            </div>
+            <button onClick={() => onLaunchApp('analyzer')} className="in-btn self-start">
+              Open all six
+            </button>
           </div>
+        </Rise>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.08] space-y-2">
-              <div className="text-3xl sm:text-4xl font-light text-white font-mono">{fmt(metrics?.r2_score)}</div>
-              <div className="text-xs font-semibold text-slate-300">Test Set R² Metric</div>
-              <div className="text-[11px] text-slate-400">ExtraTrees regression coefficient of determination</div>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.08] space-y-2">
-              <div className="text-3xl sm:text-4xl font-light text-emerald-400 font-mono">{fmt(metrics?.rmse)}</div>
-              <div className="text-xs font-semibold text-slate-300">Root Mean Square Error</div>
-              <div className="text-[11px] text-slate-400">log(mol/L) units across held-out test split</div>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.08] space-y-2">
-              <div className="text-3xl sm:text-4xl font-light text-cyan-400 font-mono">1,032</div>
-              <div className="text-xs font-semibold text-slate-300">Total Input Features</div>
-              <div className="text-[11px] text-slate-400">1,024 Morgan ECFP4 bits + 8 RDKit descriptors</div>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.08] space-y-2">
-              <div className="text-3xl sm:text-4xl font-light text-purple-400 font-mono">BoTorch</div>
-              <div className="text-xs font-semibold text-slate-300">Gaussian Process Surrogate</div>
-              <div className="text-[11px] text-slate-400">SingleTaskGP active learning acquisition engine</div>
-            </div>
-          </div>
-
-          <div className="mt-12 p-6 rounded-2xl bg-[#0c0e15] border border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Sparkles className="w-5 h-5 text-cyan-400 shrink-0" />
-              <div className="text-xs text-slate-300">
-                Want to inspect the complete Delaney ESOL parity curve, residual distributions, and test predictions?
-              </div>
-            </div>
+        <div className="mt-14">
+          {MODULES.map((m) => (
             <button
-              onClick={() => handleLaunchWithConfetti('benchmark')}
-              className="px-5 py-2.5 rounded-full bg-white text-zinc-950 text-xs font-semibold hover:bg-slate-200 transition-all shrink-0 cursor-pointer flex items-center gap-2"
+              key={m.num}
+              onClick={() => onLaunchApp(m.id)}
+              className="w-full text-left group cursor-pointer"
+              style={{ borderTop: '1px solid var(--pp-rule)' }}
             >
-              <span>View ESOL Benchmark Tab</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <div className="py-7 grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-8 items-baseline transition-opacity group-hover:opacity-100 md:opacity-90">
+                <div className="md:col-span-1 in-num text-sm" style={{ color: 'var(--pp-faint)' }}>
+                  {m.num}
+                </div>
+                <div className="md:col-span-3">
+                  <h3 className="in-display text-2xl group-hover:underline underline-offset-4 decoration-1">
+                    {m.title}
+                  </h3>
+                </div>
+                <div className="md:col-span-4">
+                  <p className="text-sm leading-relaxed">{m.what}</p>
+                </div>
+                <div className="md:col-span-4">
+                  <p
+                    className="text-[12.5px] leading-relaxed"
+                    style={{ color: 'var(--pp-muted)' }}
+                  >
+                    {m.how}
+                  </p>
+                </div>
+              </div>
             </button>
-          </div>
-
+          ))}
+          <div style={{ borderTop: '1px solid var(--pp-rule)' }} />
         </div>
       </section>
 
-      {/* Footer / Final Launch CTA */}
-      <footer className="relative z-10 py-16 bg-[#040507] border-t border-white/[0.08] text-slate-400 text-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <Atom className="w-4 h-4 text-white" />
-            <span className="text-slate-200 font-medium font-mono">MoleculeMind Decision Platform</span>
-            <span>—</span>
-            <span className="text-slate-400">RDKit · PyTorch · BoTorch · Scikit-learn · 3Dmol.js</span>
+      {/* -------------------------------------------------- validation */}
+      <section
+        id="validation"
+        style={{
+          background: 'var(--pp-sunken)',
+          borderTop: '1px solid var(--pp-rule)',
+        }}
+      >
+        <div className="max-w-[1400px] w-full mx-auto px-5 sm:px-8 py-20 sm:py-24">
+          <Rise>
+            <div className="in-label">validation</div>
+            <h2 className="in-display text-3xl sm:text-4xl mt-4 max-w-2xl">
+              Measured against data the model never saw.
+            </h2>
+            <p
+              className="text-sm mt-4 max-w-2xl"
+              style={{ color: 'var(--pp-muted)' }}
+            >
+              The solubility model is trained on the Delaney ESOL set of
+              measured aqueous solubilities. The figures here come from the
+              held-out test partition and from conformal calibration on a
+              separate slice, fetched from{' '}
+              <code className="in-num">/api/benchmark</code> rather than written
+              into this page.
+            </p>
+          </Rise>
+
+          <div className="mt-12 grid grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              {
+                v: fmt(metrics?.r2_score),
+                t: 'test R²',
+                n: 'coefficient of determination on the held-out split',
+              },
+              {
+                v: fmt(metrics?.rmse),
+                t: 'RMSE',
+                n: 'log(mol/L), same split',
+              },
+              {
+                v: fmt(metrics?.mae),
+                t: 'MAE',
+                n: 'mean absolute error, log(mol/L)',
+              },
+              {
+                v:
+                  typeof coverage90 === 'number'
+                    ? `${coverage90.toFixed(1)}%`
+                    : '—',
+                t: 'coverage at 90%',
+                n: 'how often the interval actually contained the measurement',
+              },
+            ].map((s) => (
+              <div key={s.t} className="in-panel p-6">
+                <div className="in-num text-3xl sm:text-4xl font-light">
+                  {s.v}
+                </div>
+                <div className="in-label mt-3">{s.t}</div>
+                <div
+                  className="text-[11px] mt-2 leading-relaxed"
+                  style={{ color: 'var(--pp-faint)' }}
+                >
+                  {s.n}
+                </div>
+              </div>
+            ))}
           </div>
 
-          <div className="flex items-center gap-6 text-slate-400">
-            <button onClick={onOpenGlossary} className="hover:text-white transition-colors cursor-pointer">
-              Scientific Glossary
+          <div className="mt-8 in-panel p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+            <p className="text-sm" style={{ color: 'var(--pp-muted)' }}>
+              The benchmark module shows the parity plot, the residual
+              distribution and the coverage table behind these four numbers.
+            </p>
+            <button
+              onClick={() => onLaunchApp('benchmark')}
+              className="in-btn shrink-0"
+            >
+              Open benchmark
             </button>
-            <button onClick={() => handleLaunchWithConfetti('analyzer')} className="hover:text-white transition-colors cursor-pointer text-white font-medium">
-              Open Workbench →
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------ footer */}
+      <footer
+        className="mt-auto"
+        style={{ borderTop: '1px solid var(--pp-rule)', background: 'var(--pp-paper)' }}
+      >
+        <div className="max-w-[1400px] mx-auto px-5 sm:px-8 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+          <div>
+            <div className="in-display text-sm">MoleculeMind</div>
+            <div className="in-label mt-1.5">
+              RDKit · scikit-learn · PyTorch · BoTorch · FastAPI
+            </div>
+          </div>
+          <div className="flex items-center gap-6">
+            <button onClick={onOpenGlossary} className="in-label hover:opacity-60 transition-opacity cursor-pointer">
+              methodology
+            </button>
+            <button
+              onClick={() => onLaunchApp('analyzer')}
+              className="in-label hover:opacity-60 transition-opacity cursor-pointer"
+              style={{ color: 'var(--pp-accent)' }}
+            >
+              open workbench →
             </button>
           </div>
         </div>
       </footer>
-
     </div>
   );
 };

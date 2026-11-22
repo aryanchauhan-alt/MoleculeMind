@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Info, HelpCircle, X, BookOpen } from 'lucide-react';
+
 
 export interface ScientificConcept {
   term: string;
@@ -133,180 +133,142 @@ export const SCIENTIFIC_GLOSSARY: Record<string, ScientificConcept> = {
   }
 };
 
-interface TooltipProps {
-  id: string;
-  children?: React.ReactNode;
-}
-
-export const ScientificTooltip: React.FC<TooltipProps> = ({ id, children }) => {
-  const [open, setOpen] = useState(false);
-  const concept = SCIENTIFIC_GLOSSARY[id.toLowerCase()];
-
-  if (!concept) {
-    return <>{children}</>;
-  }
-
-  return (
-    <span className="relative inline-flex items-center gap-1 group">
-      {children}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(!open);
-        }}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        className="text-cyan-400/80 hover:text-cyan-300 transition-colors cursor-pointer inline-flex items-center p-0.5 focus:outline-none"
-        title="View scientific definition"
-        aria-label={`Definition of ${concept.term}`}
-      >
-        <HelpCircle className="w-3.5 h-3.5" />
-      </button>
-
-      {open && (
-        <div 
-          className="absolute z-50 bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-80 sm:w-96 p-3.5 rounded-xl bg-slate-900 border border-slate-700/80 shadow-2xl backdrop-blur-xl text-left pointer-events-none animate-in fade-in zoom-in-95 duration-150"
-          style={{ minWidth: '280px' }}
-        >
-          <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2 mb-2">
-            <div>
-              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60">
-                {concept.category}
-              </span>
-              <h5 className="text-xs font-bold text-white mt-1 leading-snug">
-                {concept.term}
-              </h5>
-            </div>
-            <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-1" />
-          </div>
-
-          <p className="text-[11px] text-slate-300 leading-relaxed mb-2 font-normal">
-            {concept.simpleExplanation}
-          </p>
-
-          {concept.scientificFormula && (
-            <div className="p-1.5 rounded bg-slate-950 border border-slate-800/80 font-mono text-[10px] text-cyan-300 mb-2 overflow-x-auto">
-              {concept.scientificFormula}
-            </div>
-          )}
-
-          {concept.reference && (
-            <p className="text-[9px] text-slate-400 italic">
-              Ref: {concept.reference}
-            </p>
-          )}
-
-          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-700" />
-        </div>
-      )}
-    </span>
-  );
-};
-
-export const ConceptHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+/**
+ * The glossary, on paper.
+ *
+ * The inline `ScientificTooltip` that used to live here was never imported
+ * anywhere, so it went with the dark theme rather than being ported.
+ */
+export const ConceptHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
+  isOpen,
+  onClose,
+}) => {
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [search, setSearch] = useState<string>('');
 
   if (!isOpen) return null;
 
-  const categories = ['All', 'Structure', 'Prediction', 'Uncertainty', 'Optimization', 'Active Learning'];
+  const categories = [
+    'All',
+    'Structure',
+    'Prediction',
+    'Uncertainty',
+    'Optimization',
+    'Active Learning',
+  ];
 
-  const filteredConcepts = Object.values(SCIENTIFIC_GLOSSARY).filter(item => {
+  const filteredConcepts = Object.values(SCIENTIFIC_GLOSSARY).filter((item) => {
     const matchCat = filterCategory === 'All' || item.category === filterCategory;
-    const matchSearch = item.term.toLowerCase().includes(search.toLowerCase()) || 
-                        item.simpleExplanation.toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase();
+    const matchSearch =
+      item.term.toLowerCase().includes(q) ||
+      item.simpleExplanation.toLowerCase().includes(q);
     return matchCat && matchSearch;
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl max-h-[85vh] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-              <BookOpen className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-bold text-white text-base">Scientific Glossary & Theoretical Principles</h3>
-              <p className="text-xs text-slate-400">Comprehensive reference of computational chemistry and ML terminology used across MoleculeMind</p>
-            </div>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(23, 23, 26, 0.45)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
+        style={{
+          background: 'var(--pp-paper)',
+          border: '1px solid var(--pp-rule)',
+          borderRadius: 16,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="px-6 py-5 flex items-start justify-between gap-4"
+          style={{ borderBottom: '1px solid var(--pp-rule)' }}
+        >
+          <div>
+            <div className="in-label">methodology</div>
+            <h3 className="in-display text-xl mt-2">Scientific glossary</h3>
+            <p className="text-[12.5px] mt-1" style={{ color: 'var(--pp-muted)' }}>
+              Every term the interface uses, with the equation behind it and the
+              paper it comes from.
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="in-label hover:opacity-60 transition-opacity cursor-pointer shrink-0 pt-1"
+            aria-label="Close glossary"
           >
-            <X className="w-5 h-5" />
+            close
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row gap-3 bg-slate-900/60">
+        <div
+          className="px-6 py-4 flex flex-col sm:flex-row gap-3"
+          style={{ borderBottom: '1px solid var(--pp-rule)' }}
+        >
           <input
             type="text"
-            placeholder="Search concepts, equations, properties..."
+            placeholder="Search concepts, equations, properties…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+            className="in-input flex-1 text-xs"
           />
           <div className="flex flex-wrap gap-1.5">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setFilterCategory(cat)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  filterCategory === cat
-                    ? 'bg-cyan-500 text-slate-950 font-semibold shadow'
-                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            {categories.map((cat) => {
+              const on = filterCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setFilterCategory(cat)}
+                  className="px-3 py-1.5 rounded-full text-[11px] transition-colors cursor-pointer"
+                  style={{
+                    background: on ? 'var(--pp-ink)' : 'transparent',
+                    color: on ? 'var(--pp-paper)' : 'var(--pp-muted)',
+                    border: `1px solid ${on ? 'var(--pp-ink)' : 'var(--pp-rule)'}`,
+                  }}
+                >
+                  {cat}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {filteredConcepts.map(concept => (
-            <div key={concept.term} className="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/30 transition-all">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <h4 className="text-sm font-bold text-white">{concept.term}</h4>
-                <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60">
-                  {concept.category}
-                </span>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {filteredConcepts.map((concept) => (
+            <div
+              key={concept.term}
+              className="pb-5"
+              style={{ borderBottom: '1px solid var(--pp-rule-soft)' }}
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <h4 className="in-display text-base">{concept.term}</h4>
+                <span className="in-label shrink-0">{concept.category}</span>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed mb-2.5">
+              <p
+                className="text-[13px] leading-relaxed mt-2"
+                style={{ color: 'var(--pp-muted)' }}
+              >
                 {concept.simpleExplanation}
               </p>
               {concept.scientificFormula && (
-                <div className="p-2 rounded bg-slate-900 border border-slate-800 font-mono text-xs text-cyan-300 mb-2 overflow-x-auto">
+                <div className="pp-well in-num text-[11px] px-3 py-2 mt-3 overflow-x-auto">
                   {concept.scientificFormula}
                 </div>
               )}
               {concept.reference && (
-                <div className="text-[10px] text-slate-500 italic">
-                  Academic Citation: {concept.reference}
-                </div>
+                <div className="in-label mt-3">ref · {concept.reference}</div>
               )}
             </div>
           ))}
           {filteredConcepts.length === 0 && (
-            <div className="text-center py-12 text-slate-500 text-xs">
-              No matching scientific concepts found.
+            <div
+              className="text-center py-12 text-xs"
+              style={{ color: 'var(--pp-faint)' }}
+            >
+              No matching concept.
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/70 text-right">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition-colors"
-          >
-            Close Glossary
-          </button>
         </div>
       </div>
     </div>
